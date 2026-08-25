@@ -24,4 +24,6 @@ async def test_agent_status(client):
 @pytest.mark.asyncio
 async def test_face_login_route_is_not_exposed(client):
     response = await client.post("/api/v1/auth/login/face", json={})
-    assert response.status_code == 404
+    # The frontend GET catch-all matches this path, so an unsupported POST is
+    # correctly rejected as 405 rather than being handled by a Face Login API.
+    assert response.status_code == 405

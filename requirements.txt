@@ -13,6 +13,8 @@ langgraph>=0.2.0
 
 # Database
 sqlalchemy>=2.0.0
+# Async SQLite driver used by the application and the in-memory test database.
+aiosqlite>=0.20.0
 alembic>=1.14.0
 psycopg2-binary>=2.9.0
 pgvector>=0.3.0
