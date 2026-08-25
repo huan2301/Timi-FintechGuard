@@ -1,0 +1,681 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Loader2, MessageCircle, Mic, MicOff, Minimize2, Send, Sparkles, Shield, Trash2, X, Zap } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { assistantApi, type AssistantChatTurn, type AssistantTaskState } from "@/services/api/assistant";
+import TimiChibi from "@/components/ai/TimiChibi";
+import { useScamGuardian } from "@/components/guardian/ScamGuardianProvider";
+import { useAuthStore } from "@/stores/authStore";
+import { useTimiAssistantStore } from "@/stores/timiAssistantStore";
+
+type AssistantTip = {
+  title: string;
+  message: string;
+};
+
+type ChatMessage = AssistantChatTurn & { id: string };
+
+type SpeechRecognitionResultEvent = {
+  resultIndex: number;
+  results: ArrayLike<{
+    isFinal: boolean;
+    [index: number]: { transcript: string };
+  }>;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type AssistantApiError = {
+  response?: {
+    status?: number;
+    data?: { detail?: unknown };
+  };
+};
+
+function assistantErrorMessage(error: unknown): string {
+  const apiError = error as AssistantApiError;
+  const detail = apiError.response?.data?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (apiError.response?.status === 503) {
+    return "Chat Agent đang tạm hết quota hoặc chưa được cấu hình. Bạn thử lại sau nhé.";
+  }
+  return "Timi chưa thể kết nối để trả lời lúc này. Bạn thử lại sau một chút nhé.";
+}
+
+const SENSITIVE_CREDENTIAL_PATTERN = /(?:mã\s*(?:otp|pin)|otp|pin|mật khẩu|password)\s*[:=-]?\s*\d{4,}/iu;
+const SENSITIVE_CREDENTIAL_MESSAGE = "Bạn đừng gửi OTP, PIN hoặc mật khẩu vào chat nhé. Timi không bao giờ yêu cầu các mã này qua hội thoại.";
+const WELCOME_MESSAGE: ChatMessage = {
+  id: "welcome",
+  role: "assistant",
+  content: "Chào bạn! Mình có thể mở Chuyển tiền, QR, Lịch sử, Hồ sơ, đổi mật khẩu, PIN, Face ID và bật/tắt bảo vệ cuộc gọi của Timi.",
+};
+const EMPTY_TASK_STATE: AssistantTaskState = {
+  task: "none",
+  transfer: {
+    recipient_name: null,
+    recipient_account: null,
+    bank_code: null,
+    amount: null,
+    note: null,
+  },
+  last_recipient: null,
+};
+
+function taskStorageKey(userId: string): string {
+  return `timi-assistant-task:${userId}`;
+}
+
+function speechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  const browserWindow = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition ?? null;
+}
+
+function readTaskState(userId: string): AssistantTaskState {
+  try {
+    const stored = window.sessionStorage.getItem(taskStorageKey(userId));
+    if (!stored) return EMPTY_TASK_STATE;
+    const candidate = JSON.parse(stored) as Partial<AssistantTaskState>;
+    const rawLastRecipient = candidate.last_recipient;
+    const lastRecipient = rawLastRecipient?.recipient_account && rawLastRecipient.bank_code
+      ? {
+          ...EMPTY_TASK_STATE.transfer,
+          ...rawLastRecipient,
+          amount: null,
+          note: null,
+        }
+      : null;
+    if (candidate.task === "transfer" && candidate.transfer) {
+      return {
+        task: "transfer",
+        transfer: { ...EMPTY_TASK_STATE.transfer, ...candidate.transfer },
+        last_recipient: lastRecipient,
+      };
+    }
+    if (candidate.task === "none") {
+      return {
+        task: "none",
+        transfer: { ...EMPTY_TASK_STATE.transfer },
+        last_recipient: lastRecipient,
+      };
+    }
+    return EMPTY_TASK_STATE;
+  } catch {
+    return EMPTY_TASK_STATE;
+  }
+}
+
+function firstName(fullName?: string | null): string {
+  return fullName?.trim().split(/\s+/)[0] || "bạn";
+}
+
+function tipsForPath(pathname: string, name: string): AssistantTip[] {
+  if (pathname === "/transfer") {
+    return [
+      { title: `Chào ${name}!`, message: "Timi ở đây cùng bạn. Nhớ kiểm tra tên người nhận trước khi chuyển nhé." },
+      { title: "Mẹo nhỏ từ Timi", message: "Đừng chia sẻ OTP, mã PIN hay ảnh khuôn mặt cho bất kỳ ai." },
+      { title: "Đang cần hỗ trợ?", message: "Khi phân tích giao dịch, Timi sẽ báo rõ các dấu hiệu cần lưu ý." },
+    ];
+  }
+  if (pathname === "/qr") {
+    return [
+      { title: "Timi cùng quét QR", message: "QR chứa đường dẫn sẽ được kiểm tra blacklist trước khi bạn mở." },
+      { title: "Nhắc bạn nè", message: "Chỉ quét QR từ nguồn bạn tin tưởng và xem kỹ nội dung trước khi tiếp tục." },
+    ];
+  }
+  if (pathname === "/history") {
+    return [
+      { title: "Lịch sử giao dịch", message: "Bạn có thể xem lại giao dịch gần đây để phát hiện điều bất thường." },
+      { title: "Timi luôn bên bạn", message: "Thấy giao dịch lạ? Hãy báo ngay để hệ thống hỗ trợ kiểm tra." },
+    ];
+  }
+  if (pathname === "/confirm-location") {
+    return [
+      { title: `Chào ${name}!`, message: "Cấp vị trí gần đúng giúp Timi nhận ra đăng nhập bất thường và bảo vệ tài khoản tốt hơn." },
+    ];
+  }
+  if (pathname === "/setup-pin" || pathname === "/setup-face") {
+    return [
+      { title: "Cùng hoàn thiện bảo mật nhé", message: "Thêm PIN và Face ID giúp Timi bảo vệ giao dịch của bạn tốt hơn." },
+    ];
+  }
+  return [
+    { title: `Chào ${name}!`, message: "Timi đã online. Mình sẽ đồng hành để mỗi giao dịch của bạn an toàn hơn." },
+    { title: "Mẹo bảo mật", message: "Không chuyển tiền vội khi người lạ tạo cảm giác khẩn cấp hoặc thúc ép bạn." },
+  ];
+}
+
+export default function MiniTimiAssistant() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const activity = useTimiAssistantStore((state) => state.activity);
+  const clearActivity = useTimiAssistantStore((state) => state.clearActivity);
+  const { criticalAlert, risk, setVoiceMonitoringEnabled } = useScamGuardian();
+  const [isOpen, setOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [tipIndex, setTipIndex] = useState(0);
+  const [draft, setDraft] = useState("");
+  const [widgetPosition, setWidgetPosition] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    WELCOME_MESSAGE,
+  ]);
+  const [taskState, setTaskState] = useState<AssistantTaskState>(EMPTY_TASK_STATE);
+  const [isListening, setListening] = useState(false);
+  const [voiceInputAvailable, setVoiceInputAvailable] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const handledGuardianAlertRef = useRef<unknown>(null);
+  const hydratedHistoryUserRef = useRef<string | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechTranscriptRef = useRef("");
+  const submitSpeechOnEndRef = useRef(false);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const name = firstName(user?.full_name);
+  const tips = useMemo(() => tipsForPath(location.pathname, name), [location.pathname, name]);
+  const tip = tips[tipIndex % tips.length];
+
+  const activityTip: AssistantTip | null = activity.status === "analyzing"
+    ? { title: "Timi đang kiểm tra nè", message: "Ráng chờ mình một xíu nhé. Timi đang đối chiếu giao dịch để bảo vệ bạn." }
+    : activity.status === "warning"
+      ? {
+          title: "Timi thấy điều cần lưu ý",
+          message: activity.riskLevel === "high"
+            ? "Đừng vội chuyển tiền nhé! Hãy dừng lại và kiểm tra kỹ cảnh báo của Timi."
+            : "Giao dịch này cần được kiểm tra thêm. Mình cùng xem kỹ trước khi tiếp tục nhé.",
+        }
+      : activity.status === "complete"
+        ? { title: "Timi đã kiểm tra xong", message: activity.message ?? "Mình đã hoàn tất kiểm tra. Cảm ơn bạn đã kiên nhẫn nhé!" }
+        : null;
+
+  const displayedTip = activityTip ?? tip;
+
+  const historyQuery = useQuery({
+    queryKey: ["assistant-chat-history", user?.id],
+    queryFn: assistantApi.history,
+    enabled: Boolean(user?.id),
+    staleTime: 60_000,
+  });
+
+  const chatMutation = useMutation({
+    mutationFn: assistantApi.chat,
+    onSuccess: async (response) => {
+      setTaskState(response.task_state);
+      setChatMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: response.answer }]);
+      if (response.action?.type === "set_guardian_voice_monitoring") {
+        try {
+          await setVoiceMonitoringEnabled(Boolean(response.action.voice_monitoring_enabled));
+        } catch {
+          setChatMessages((current) => [...current, {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "Timi chưa thể thay đổi trạng thái bảo vệ cuộc gọi. Bạn hãy thử lại trong phần Hồ sơ.",
+          }]);
+        }
+        return;
+      }
+      if (response.action?.type === "navigate_app" && response.action.route) {
+        setChatOpen(false);
+        navigate(response.action.route);
+        return;
+      }
+      if (response.action?.type === "navigate_transfer_review") {
+        const transfer = response.action.transfer;
+        if (transfer?.recipient_account && transfer.bank_code && transfer.amount) {
+          setTaskState({
+            task: "none",
+            transfer: { ...EMPTY_TASK_STATE.transfer },
+            last_recipient: {
+              ...EMPTY_TASK_STATE.transfer,
+              recipient_name: transfer.recipient_name ?? null,
+              recipient_account: transfer.recipient_account,
+              bank_code: transfer.bank_code,
+              amount: null,
+              note: null,
+            },
+          });
+          setChatOpen(false);
+          navigate("/transfer", {
+            state: {
+              AssistantTransfer: {
+                accountNumber: transfer.recipient_account,
+                bankCode: transfer.bank_code,
+                amount: transfer.amount,
+                note: transfer.note ?? "",
+              },
+            },
+          });
+        }
+      }
+    },
+    onError: (error) => {
+      setChatMessages((current) => [...current, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: assistantErrorMessage(error),
+      }]);
+    },
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: assistantApi.clearHistory,
+    onSuccess: () => {
+      setChatMessages([WELCOME_MESSAGE]);
+      setTaskState(EMPTY_TASK_STATE);
+      queryClient.setQueryData(["assistant-chat-history", user?.id], { items: [] });
+    },
+  });
+
+  useEffect(() => { setTipIndex(0); }, [location.pathname]);
+
+  useEffect(() => {
+    setVoiceInputAvailable(Boolean(speechRecognitionConstructor()));
+    return () => {
+      const recognition = speechRecognitionRef.current;
+      if (recognition) {
+        recognition.onend = null;
+        submitSpeechOnEndRef.current = false;
+        recognition.stop();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const userId = user?.id ?? null;
+    if (hydratedHistoryUserRef.current === userId) return;
+    hydratedHistoryUserRef.current = null;
+    setChatMessages([WELCOME_MESSAGE]);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setTaskState(EMPTY_TASK_STATE);
+      return;
+    }
+    setTaskState(readTaskState(user.id));
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      if (taskState.task === "none" && !taskState.last_recipient) {
+        window.sessionStorage.removeItem(taskStorageKey(user.id));
+      } else {
+        window.sessionStorage.setItem(taskStorageKey(user.id), JSON.stringify(taskState));
+      }
+    } catch {
+      // The task is still usable during this browser session without storage.
+    }
+  }, [taskState, user?.id]);
+
+  useEffect(() => {
+    const userId = user?.id ?? null;
+    if (!userId || !historyQuery.data || hydratedHistoryUserRef.current === userId) return;
+    const storedMessages: ChatMessage[] = historyQuery.data.items.flatMap((item) => [
+      { id: `history-user-${item.id}`, role: "user" as const, content: item.question },
+      { id: `history-assistant-${item.id}`, role: "assistant" as const, content: item.answer },
+    ]);
+    setChatMessages([WELCOME_MESSAGE, ...storedMessages]);
+    hydratedHistoryUserRef.current = userId;
+  }, [historyQuery.data, user?.id]);
+
+  useEffect(() => {
+    if (!chatOpen) return undefined;
+    // The panel is conditionally rendered. Waiting for the next frame means
+    // its scroll height includes both restored history and the newest message.
+    const frame = window.requestAnimationFrame(() => {
+      const messages = messagesScrollRef.current;
+      if (messages) messages.scrollTop = messages.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [chatOpen, chatMessages.length, chatMutation.isPending]);
+
+  useEffect(() => {
+    if (!isOpen || tips.length <= 1) return undefined;
+    const timer = window.setInterval(() => setTipIndex((current) => (current + 1) % tips.length), 9000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, tips.length]);
+
+  useEffect(() => { if (activity.status !== "idle") setOpen(true); }, [activity.status]);
+
+  useEffect(() => {
+    if (activity.status !== "complete") return undefined;
+    const timer = window.setTimeout(clearActivity, 5000);
+    return () => window.clearTimeout(timer);
+  }, [activity.status, clearActivity]);
+
+  useEffect(() => {
+    if (!criticalAlert) return;
+    if (handledGuardianAlertRef.current === criticalAlert) return;
+    handledGuardianAlertRef.current = criticalAlert;
+    const message = [
+      "🚨 Timi vừa phát hiện nguy cơ lừa đảo rất cao trong cuộc gọi.",
+      `Mức nguy cơ hiện tại: ${risk.risk_score}/100.`,
+      risk.explanation,
+      "Bạn hãy dừng cuộc gọi, không chuyển tiền và không cung cấp OTP/PIN. Nếu cần giao dịch, hãy tự gọi lại ngân hàng bằng số chính thức.",
+    ].join("\n\n");
+    setChatMessages((current) => [...current, { id: `guardian-alert-${Date.now()}`, role: "assistant", content: message }]);
+    setOpen(true);
+    setWidgetPosition(null);
+    setChatOpen(true);
+  }, [criticalAlert, risk.explanation, risk.risk_score]);
+
+  if (activity.status === "analyzing" && !criticalAlert) return null;
+
+  const sendChat = (rawMessage: string) => {
+    const message = rawMessage.trim();
+    if (!message || chatMutation.isPending) return;
+    setDraft("");
+    if (SENSITIVE_CREDENTIAL_PATTERN.test(message)) {
+      setChatMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: SENSITIVE_CREDENTIAL_MESSAGE }]);
+      return;
+    }
+    setChatMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", content: message }]);
+    chatMutation.mutate({ message, task_state: taskState });
+  };
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      speechRecognitionRef.current?.stop();
+      return;
+    }
+    const Recognition = speechRecognitionConstructor();
+    if (!Recognition) {
+      setVoiceError("Trình duyệt này chưa hỗ trợ nhập bằng giọng nói. Hãy dùng Chrome hoặc Edge.");
+      return;
+    }
+    if (chatMutation.isPending) return;
+
+    setVoiceError("");
+    speechTranscriptRef.current = "";
+    submitSpeechOnEndRef.current = true;
+    const recognition = new Recognition();
+    recognition.lang = "vi-VN";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      let finalText = speechTranscriptRef.current;
+      let interimText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript ?? "";
+        if (result.isFinal) finalText += transcript;
+        else interimText += transcript;
+      }
+      speechTranscriptRef.current = finalText;
+      setDraft(`${finalText}${interimText}`.trim());
+    };
+    recognition.onerror = (event) => {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        submitSpeechOnEndRef.current = false;
+        setVoiceError(
+          event.error === "not-allowed"
+            ? "Timi cần quyền micro để nhận giọng nói."
+            : "Không thể nhận giọng nói lúc này. Hãy thử lại.",
+        );
+      }
+    };
+    recognition.onend = () => {
+      const transcript = speechTranscriptRef.current.trim();
+      speechRecognitionRef.current = null;
+      setListening(false);
+      if (!submitSpeechOnEndRef.current || !transcript || chatMutation.isPending) return;
+      // Voice input never sends automatically: let the user inspect or amend
+      // the transcript, especially names and payment details, then tap Gửi.
+      setDraft(transcript);
+    };
+    speechRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+      setListening(true);
+    } catch {
+      speechRecognitionRef.current = null;
+      setVoiceError("Không thể khởi động micro. Hãy thử lại.");
+    }
+  };
+
+  const submitChat = (event: React.FormEvent) => {
+    event.preventDefault();
+    sendChat(draft);
+  };
+
+  // Render via a portal straight onto <body>. This is the key fix: if any
+  // ancestor in the app tree has `transform`, `filter`, `perspective`, or
+  // `will-change`, `position: fixed` inside it stops being fixed to the
+  // viewport and instead "fixes" to that ancestor — which is what makes a
+  // fixed widget appear to drift while scrolling. Mounting outside the
+  // normal DOM tree (on document.body) guarantees the widget always stays
+  // pinned to the screen regardless of what any parent component does.
+  const widget = (
+    <aside
+      className={`fixed ${widgetPosition ? "" : "bottom-20 right-4 sm:bottom-6 sm:right-6"} ${criticalAlert ? "z-[100]" : "z-40"}`}
+      style={widgetPosition ? { left: widgetPosition.x, top: widgetPosition.y } : undefined}
+      aria-label="Trợ lý Timi"
+    >
+      {/* Tip Card */}
+      {isOpen && !chatOpen && (
+        <div className="absolute bottom-24 right-0 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-blue-100/60 bg-white/80 backdrop-blur-xl shadow-2xl shadow-blue-200/30 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          {/* Top glow line */}
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-400 via-indigo-500 to-violet-500" />
+          <div className="relative flex gap-4 p-5">
+            <TimiChibi compact walking />
+            <div className="min-w-0 flex-1 pr-1">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-extrabold text-slate-900">{displayedTip.title}</p>
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-600 border border-blue-100">
+                    <Zap className="h-2.5 w-2.5" />AI
+                  </span>
+                </div>
+                <button type="button" onClick={() => setOpen(false)} className="-mr-1 -mt-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" aria-label="Thu nhỏ trợ lý Timi">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">{displayedTip.message}</p>
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-500">
+                  <Shield className="h-3.5 w-3.5" />Timi AI Anti-Scam
+                </span>
+                <button type="button" onClick={() => { setWidgetPosition(null); setChatOpen(true); }} className="inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-md shadow-blue-200 hover:shadow-lg hover:shadow-blue-300 transition-all hover:-translate-y-0.5">
+                  <MessageCircle className="h-3.5 w-3.5" />Trò chuyện
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Panel */}
+      {isOpen && chatOpen && (
+        <section className="absolute bottom-24 right-0 flex h-[min(34rem,calc(100dvh-8rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-blue-100/60 bg-white/90 backdrop-blur-xl shadow-2xl shadow-blue-200/30 animate-in zoom-in-95 duration-200" aria-label="Trò chuyện với trợ lý Timi">
+          {/* Header */}
+          <div className="flex items-center gap-3 border-b border-blue-50 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 px-5 py-4">
+            <TimiChibi compact walking />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-extrabold text-slate-900">Trò chuyện với Timi</p>
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              </div>
+              <p className="text-[11px] text-indigo-500 font-medium">Lịch sử chỉ thuộc về tài khoản của bạn</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Xóa toàn bộ lịch sử trò chuyện của bạn?")) clearHistoryMutation.mutate();
+              }}
+              disabled={clearHistoryMutation.isPending}
+              className="rounded-xl p-2 text-slate-400 hover:bg-white hover:text-rose-500 transition-colors disabled:opacity-40"
+              aria-label="Xóa lịch sử trò chuyện"
+              title="Xóa lịch sử trò chuyện"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={() => setChatOpen(false)} className="rounded-xl p-2 text-slate-400 hover:bg-white hover:text-slate-600 transition-colors" aria-label="Quay lại trợ lý Timi">
+              <Minimize2 className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div
+            ref={messagesScrollRef}
+            className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 p-4"
+          >
+            {chatMessages.map((chatMessage) => (
+              <div key={chatMessage.id} className={`flex ${chatMessage.role === "user" ? "justify-end" : "justify-start"}`}>
+                {chatMessage.role === "assistant" && (
+                  <div className="mr-2 mt-1 shrink-0">
+                    <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                      <Sparkles className="h-3 w-3 text-white" />
+                    </div>
+                  </div>
+                )}
+                <p className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
+                  chatMessage.role === "user"
+                    ? "rounded-br-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+                    : "rounded-bl-md border border-slate-100 bg-white text-slate-700"
+                }`}>
+                  {chatMessage.content}
+                </p>
+              </div>
+            ))}
+            {chatMutation.isPending && (
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <Sparkles className="h-3 w-3 text-white animate-pulse" />
+                </div>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Timi đang soạn câu trả lời…</span>
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <form onSubmit={submitChat} className="border-t border-slate-100 bg-white/80 backdrop-blur-sm p-4">
+            {isListening && (
+              <p className="mb-2.5 flex items-center gap-1.5 text-[11px] font-semibold text-rose-600">
+                <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                Đang nghe tiếng Việt… Timi sẽ soạn câu, bạn bấm Gửi khi muốn gửi.
+              </p>
+            )}
+            {voiceError && (
+              <p className="mb-2.5 text-[10px] leading-relaxed text-rose-600">{voiceError}</p>
+            )}
+            <p className="mb-2.5 text-[10px] leading-relaxed text-slate-400 flex items-center gap-1">
+              <Shield className="h-3 w-3 text-amber-400" />
+              Không nhập OTP, PIN, mật khẩu, số thẻ hoặc ảnh khuôn mặt.
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                maxLength={800}
+                disabled={chatMutation.isPending || isListening}
+                placeholder={isListening ? "Đang nhận giọng nói…" : "Hỏi Timi về ứng dụng…"}
+                className="min-w-0 flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-xs outline-none focus:ring-2 focus:ring-blue-400/30 focus:bg-white transition-all disabled:opacity-60 border border-transparent focus:border-blue-200"
+              />
+              <button
+                type="button"
+                onClick={toggleVoiceInput}
+                disabled={!voiceInputAvailable || chatMutation.isPending}
+                className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                  isListening
+                    ? "bg-rose-500 text-white shadow-md shadow-rose-200 hover:bg-rose-600"
+                    : "border border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100"
+                }`}
+                aria-label={isListening ? "Dừng nhập giọng nói" : "Nhập bằng giọng nói"}
+                aria-pressed={isListening}
+                title={voiceInputAvailable ? "Nhập bằng giọng nói" : "Trình duyệt chưa hỗ trợ nhập giọng nói"}
+              >
+                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
+              <button
+                type="submit"
+                disabled={!draft.trim() || chatMutation.isPending || isListening}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-200 hover:shadow-lg hover:shadow-blue-300 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                aria-label="Gửi tin nhắn"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {/* Toggle Button */}
+      <button
+        type="button"
+        onPointerDown={(event) => {
+          const rect = event.currentTarget.parentElement?.getBoundingClientRect();
+          if (!rect) return;
+          dragRef.current = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - rect.left,
+            offsetY: event.clientY - rect.top,
+            moved: false,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          const nextX = Math.min(Math.max(event.clientX - drag.offsetX, 8), window.innerWidth - 72);
+          const nextY = Math.min(Math.max(event.clientY - drag.offsetY, 8), window.innerHeight - 72);
+          if (Math.abs(nextX - (widgetPosition?.x ?? nextX)) > 2 || Math.abs(nextY - (widgetPosition?.y ?? nextY)) > 2) {
+            drag.moved = true;
+          }
+          setWidgetPosition({ x: nextX, y: nextY });
+        }}
+        onPointerUp={(event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          if (drag.moved) suppressClickRef.current = true;
+          dragRef.current = null;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={() => {
+          dragRef.current = null;
+        }}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+          }
+          setOpen((value) => !value);
+          if (isOpen) setChatOpen(false);
+        }}
+        className="group relative ml-auto grid h-16 w-16 cursor-grab touch-none place-items-center rounded-full bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 p-[2px] shadow-xl shadow-blue-900/30 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-blue-900/40 focus:outline-none focus:ring-4 focus:ring-blue-300/30 active:cursor-grabbing"
+        aria-label={isOpen ? "Đóng trợ lý Timi" : "Mở trợ lý Timi"}
+        aria-expanded={isOpen}
+        title="Kéo để di chuyển Timi"
+      >
+        <span className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-400/20 via-indigo-500/20 to-violet-500/20 blur-md animate-pulse" />
+        <span className="grid h-full w-full place-items-center rounded-full bg-gradient-to-br from-slate-900 to-blue-950 relative overflow-hidden">
+          <TimiChibi compact walking />
+        </span>
+        {!isOpen && (
+          <span className="absolute -left-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md animate-bounce">
+            <MessageCircle className="h-3.5 w-3.5" />
+          </span>
+        )}
+      </button>
+    </aside>
+  );
+
+  return createPortal(widget, document.body);
+}

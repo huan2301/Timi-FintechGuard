@@ -1,0 +1,1141 @@
+"""Transaction flow: assess -> warning -> human decision -> final status."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import time
+import uuid
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from cryptography.fernet import Fernet, InvalidToken
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from jose import JWTError
+from sqlalchemy import and_, desc, func, lateral, or_, select, true, union_all
+from sqlalchemy.orm import Session, aliased
+
+from src.agents.intervention_graph import intervention_graph
+from src.agents.transaction_graph import transaction_graph
+from src.app.config import get_settings
+from src.app.core.deps import get_current_user
+from src.app.core.security import decode_face_verification_token, decode_recipient_lookup_token, verify_password
+from src.app.db.session import get_db
+from src.app.models.blacklist import Blacklist
+from src.app.models.recipient_directory import RecipientDirectory
+from src.app.models.risk_assessment import (
+    RiskLevel,
+    RiskSignal,
+    TransactionRiskAssessment,
+    TransactionWarning,
+    WarningDecision,
+    WarningFeedback,
+)
+from src.app.models.scam_guardian import ScamGuardianSession
+from src.app.models.scam_report import ScamReport
+from src.app.models.transaction import Transaction, TransactionEnvironment, TransactionStatus
+from src.app.models.trusted_recipient import TrustedRecipient
+from src.app.models.user import User, UserRole
+from src.app.schemas.risk import (
+    AssessRequest,
+    AssessResponse,
+    DecisionRequest,
+    DecisionResponse,
+    InterventionOut,
+    InterventionRequest,
+    RiskSignalOut,
+    TransactionHistoryPage,
+    TransactionHistorySummary,
+    TrustedRecipientCreate,
+    WarningFeedbackCreate,
+    WarningOut,
+)
+from src.app.schemas.scam import ScamReportCreate, ScamReportOut
+from src.app.services import risk_rules
+from src.app.services.audit import add_audit_log
+from src.app.services.bank_normalization import normalize_bank_name
+from src.app.services.blacklist_policy import promote_blacklist_if_eligible
+from src.app.services.timi_bank import (
+    InsufficientTimiBalance,
+    TimiSelfTransfer,
+    TimiTransferError,
+    apply_timi_transfer,
+    find_active_timi_recipient,
+    is_timi_bank,
+    lock_timi_transfer_parties,
+)
+from src.app.services.transaction_authentication import (
+    requires_face_verification as requires_transfer_face_verification,
+)
+from src.app.services.transaction_telemetry import (
+    RiskTelemetry,
+    build_risk_telemetry,
+    persist_risk_telemetry,
+)
+
+router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _request_peer_ip(request: Request) -> str | None:
+    """Return only the direct ASGI peer; forwarded headers are not trusted."""
+    return request.client.host if request.client is not None else None
+
+
+def _sync_completed_recipient(db: Session, transaction: Transaction) -> None:
+    """Add a successfully transferred recipient to the shared directory."""
+    bank_code = normalize_bank_name(transaction.bank_code)
+    if is_timi_bank(bank_code):
+        # Timi recipients are always resolved from the live user account; do
+        # not keep a stale duplicate in the generic recipient directory.
+        return
+    account_number = transaction.payee_account.replace(" ", "").strip()
+    if not bank_code or not account_number:
+        return
+
+    entry = db.scalar(
+        select(RecipientDirectory).where(
+            RecipientDirectory.account_number == account_number,
+            RecipientDirectory.bank_code == bank_code,
+        )
+    )
+    if entry is None:
+        db.add(
+            RecipientDirectory(
+                account_number=account_number,
+                bank_code=bank_code,
+                account_name=transaction.payee_name.strip(),
+                source="completed_transfer",
+                is_active=True,
+            )
+        )
+    elif not entry.is_active:
+        entry.is_active = True
+
+
+def _warning_content(level: str, explanation: str, recommendation: str) -> tuple[str, str]:
+    if level == RiskLevel.HIGH:
+        return "Cảnh báo rủi ro cao", recommendation
+    return "Cần xác minh thêm", recommendation
+
+
+def _normalize_request(payload: AssessRequest) -> AssessRequest:
+    return payload.model_copy(
+        update={"bank_code": normalize_bank_name(payload.bank_code)}
+    )
+
+
+def _verified_recipient_request(
+    payload: AssessRequest, current_user: User, db: Session
+) -> AssessRequest:
+    """Use only the name that was returned by a recent recipient lookup."""
+    payload = _normalize_request(payload)
+    account_number = payload.payee_account.replace(" ", "").strip()
+    if not payload.bank_code:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Ngân hàng không hợp lệ")
+
+    try:
+        verified = decode_recipient_lookup_token(
+            payload.recipient_lookup_token, user_id=str(current_user.id)
+        )
+    except (JWTError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Thông tin người nhận chưa được xác thực hoặc đã hết hạn. Vui lòng tra cứu lại.",
+        ) from None
+
+    if verified["account_number"] != account_number or verified["bank_code"] != payload.bank_code:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Thông tin người nhận đã thay đổi. Vui lòng tra cứu lại.",
+        )
+    if is_timi_bank(payload.bank_code):
+        timi_recipient = find_active_timi_recipient(db, account_number)
+        if timi_recipient is not None and timi_recipient.role == UserRole.ADMIN.value:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Không thể chuyển tiền đến tài khoản quản trị viên.",
+            )
+    return payload.model_copy(
+        update={"payee_account": account_number, "payee_name": verified["account_name"]}
+    )
+
+
+def _response_from_assessment(
+    transaction: Transaction,
+    assessment: TransactionRiskAssessment,
+    signals: list[RiskSignal],
+    warning: TransactionWarning | None,
+) -> AssessResponse:
+    requires_face_verification = requires_transfer_face_verification(
+        amount=transaction.amount,
+        risk_level=assessment.risk_level,
+        blacklist_match_found=assessment.blacklist_match_found,
+    )
+    face_verification_nonce = None
+    face_verification_expires_at = None
+    if requires_face_verification:
+        face_verification_nonce = uuid.uuid4().hex
+        face_verification_expires_at = datetime.now(UTC) + timedelta(minutes=3)
+
+    return AssessResponse(
+        transaction_id=transaction.id,
+        assessment_id=assessment.id,
+        risk_score=float(assessment.risk_score),
+        risk_level=assessment.risk_level,
+        signals=[
+            RiskSignalOut(
+                signal_type=signal.signal_type,
+                severity=signal.severity,
+                score=float(signal.score) if signal.score is not None else None,
+                explanation=signal.explanation,
+                evidence=signal.evidence or {},
+            )
+            for signal in signals
+        ],
+        explanation=assessment.explanation,
+        recommendation=(
+            warning.message
+            if warning is not None
+            else risk_rules.recommendation(assessment.risk_level)
+        ),
+        should_warn=assessment.should_warn,
+        requires_face_verification=requires_face_verification,
+        face_verification_nonce=face_verification_nonce,
+        face_verification_expires_at=face_verification_expires_at,
+        warning=(
+            WarningOut(
+                id=warning.id,
+                warning_level=warning.warning_level,
+                title=warning.title,
+                message=warning.message,
+                transparency_reason=warning.transparency_reason,
+                displayed_at=warning.displayed_at,
+                countdown_seconds=warning.countdown_seconds,
+            )
+            if warning is not None
+            else None
+        ),
+    )
+
+
+def _persist_assessment(
+    db: Session,
+    transaction: Transaction,
+    request: AssessRequest,
+    current_user: User,
+    telemetry: RiskTelemetry | None,
+) -> AssessResponse:
+    started = time.perf_counter()
+    transaction.transaction_status = TransactionStatus.RISK_CHECKING
+    db.add(transaction)
+    db.flush()
+
+    graph_result = transaction_graph.invoke(
+        {
+            "db": db,
+            "user_id": current_user.id,
+            "request": request,
+            "telemetry": telemetry,
+        }
+    )
+    candidates = graph_result["signals"]
+    score, level = graph_result["risk_score"], graph_result["risk_level"]
+    explanation = graph_result["explanation"]
+    should_warn = level in {RiskLevel.MEDIUM, RiskLevel.HIGH}
+    active_guardian = db.scalar(
+        select(ScamGuardianSession)
+        .where(
+            ScamGuardianSession.user_id == current_user.id,
+            ScamGuardianSession.status == "active",
+            ScamGuardianSession.agent_action.in_(
+                ["MONITOR", "PAUSE", "STOP"]
+            ),
+        )
+        .order_by(desc(ScamGuardianSession.max_risk_score))
+        .limit(1)
+    )
+    if active_guardian is not None:
+        guardian_score = active_guardian.max_risk_score / 100
+        score = max(score, guardian_score)
+        # The Guardian agent owns the risk threshold and action.  The
+        # transaction API only translates that action into an execution
+        # safeguard; it does not derive one from a numeric score.
+        level = (
+            RiskLevel.MEDIUM
+            if active_guardian.agent_action == "MONITOR"
+            else RiskLevel.HIGH
+        )
+        should_warn = active_guardian.agent_action in {"MONITOR", "PAUSE", "STOP"}
+        explanation = (
+            f"Scam Guardian đang theo dõi một cuộc gọi có mức nguy cơ "
+            f"{active_guardian.max_risk_score}/100 và đề xuất "
+            f"{active_guardian.agent_action}. Hãy tạm dừng trước khi chuyển tiền. "
+            f"{explanation}"
+        )
+        candidates = [
+            *candidates,
+            risk_rules.RiskSignalCandidate(
+                signal_type="active_scam_guardian",
+                severity="high",
+                score=guardian_score,
+                explanation=(
+                    "Phiên Scam Guardian đang hoạt động và đã phát hiện tín hiệu "
+                    "đáng ngờ trong cuộc gọi."
+                ),
+                evidence={
+                    "session_id": str(active_guardian.id),
+                    "risk_score": active_guardian.max_risk_score,
+                    "agent_action": active_guardian.agent_action,
+                },
+            ),
+        ]
+
+    assessment = TransactionRiskAssessment(
+        transaction_id=transaction.id,
+        risk_score=score,
+        risk_level=level,
+        should_warn=should_warn,
+        rules_version=risk_rules.RULES_VERSION,
+        blacklist_match_found=any(
+            signal.signal_type == "blacklist_exact_match" for signal in candidates
+        ),
+        explanation=explanation,
+        raw_result={
+            "engine": "deterministic_rules",
+            "signal_types": [signal.signal_type for signal in candidates],
+            "agent": "langgraph",
+            "llm_used": graph_result.get("llm_used", False),
+            "prompt_injection_detected": graph_result.get("prompt_injection_detected", False),
+            "active_scam_guardian": (
+                {
+                    "session_id": str(active_guardian.id),
+                    "risk_score": active_guardian.max_risk_score,
+                    "agent_action": active_guardian.agent_action,
+                }
+                if active_guardian is not None
+                else None
+            ),
+            "telemetry": {
+                "device_context_available": bool(telemetry and telemetry.device_hash),
+                "network_context_available": bool(telemetry and telemetry.ip_hash),
+                "coarse_location_opted_in": bool(telemetry and telemetry.has_location),
+            },
+        },
+        latency_ms=round((time.perf_counter() - started) * 1000),
+    )
+    db.add(assessment)
+    db.flush()
+    persist_risk_telemetry(
+        db,
+        user_id=current_user.id,
+        transaction_id=transaction.id,
+        telemetry=telemetry,
+    )
+
+    persisted_signals: list[RiskSignal] = []
+    for candidate in candidates:
+        signal = RiskSignal(
+            assessment_id=assessment.id,
+            signal_type=candidate.signal_type,
+            severity=candidate.severity,
+            score=candidate.score,
+            explanation=candidate.explanation,
+            matched_blacklist_id=candidate.matched_blacklist_id,
+            matched_pattern_id=candidate.matched_pattern_id,
+            evidence=candidate.evidence,
+        )
+        db.add(signal)
+        persisted_signals.append(signal)
+
+    warning: TransactionWarning | None = None
+    if should_warn:
+        title, message = _warning_content(
+            level, explanation, risk_rules.recommendation(level)
+        )
+        warning = TransactionWarning(
+            transaction_id=transaction.id,
+            assessment_id=assessment.id,
+            warning_level=level,
+            title=title,
+            message=message,
+            transparency_reason=explanation,
+            displayed_at=_utcnow(),
+            countdown_seconds=30,
+        )
+        db.add(warning)
+
+    transaction.transaction_status = TransactionStatus.AWAITING_DECISION
+    add_audit_log(
+        db,
+        action="transaction.assessed",
+        actor_id=current_user.id,
+        resource_type="transaction",
+        resource_id=transaction.id,
+        metadata={
+            "assessment_id": str(assessment.id),
+            "risk_level": level,
+            "risk_score": score,
+            "should_warn": should_warn,
+        },
+    )
+    if warning is not None:
+        add_audit_log(
+            db,
+            action="transaction.warning_created",
+            actor_id=current_user.id,
+            resource_type="transaction_warning",
+            resource_id=warning.id,
+            metadata={"transaction_id": str(transaction.id), "warning_level": level},
+        )
+
+    db.commit()
+    # A single alert never blacklists an account. Promotion requires consensus.
+    promote_blacklist_if_eligible(db, transaction.payee_account, transaction.bank_code, current_user.id)
+    db.commit()
+    db.refresh(assessment)
+    if warning is not None:
+        db.refresh(warning)
+    for signal in persisted_signals:
+        db.refresh(signal)
+    return _response_from_assessment(transaction, assessment, persisted_signals, warning)
+
+
+@router.post("/assess", response_model=AssessResponse, status_code=status.HTTP_201_CREATED)
+def assess(
+    payload: AssessRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AssessResponse:
+    """Create a sandbox transaction and store its first risk assessment."""
+    payload = _verified_recipient_request(payload, current_user, db)
+    transaction = Transaction(
+        user_id=current_user.id,
+        payee_account=payload.payee_account.replace(" ", "").strip(),
+        payee_name=payload.payee_name.strip(),
+        bank_code=payload.bank_code.strip() if payload.bank_code else None,
+        amount=payload.amount,
+        note=payload.note.strip() if payload.note else None,
+        currency=payload.currency.upper(),
+        environment=TransactionEnvironment.SANDBOX,
+    )
+    telemetry = build_risk_telemetry(
+        payload.client_context, client_ip=_request_peer_ip(request)
+    )
+    return _persist_assessment(db, transaction, payload, current_user, telemetry)
+
+
+@router.post("/{transaction_id}/reassess", response_model=AssessResponse)
+def reassess(
+    transaction_id: uuid.UUID,
+    payload: AssessRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AssessResponse:
+    """Append a new assessment when rules/model inputs need to be re-evaluated."""
+    payload = _verified_recipient_request(payload, current_user, db)
+    transaction = db.scalar(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.user_id == current_user.id,
+        )
+    )
+    if transaction is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy giao dịch")
+    if transaction.transaction_status not in {
+        TransactionStatus.DRAFT,
+        TransactionStatus.AWAITING_DECISION,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Chỉ có thể đánh giá lại giao dịch đang chờ quyết định",
+        )
+
+    transaction.payee_account = payload.payee_account.replace(" ", "").strip()
+    transaction.payee_name = payload.payee_name.strip()
+    transaction.bank_code = payload.bank_code.strip() if payload.bank_code else None
+    transaction.amount = payload.amount
+    transaction.note = payload.note.strip() if payload.note else None
+    transaction.currency = payload.currency.upper()
+    telemetry = build_risk_telemetry(
+        payload.client_context, client_ip=_request_peer_ip(request)
+    )
+    return _persist_assessment(db, transaction, payload, current_user, telemetry)
+
+
+@router.post("/{transaction_id}/intervention", response_model=InterventionOut)
+def intervention(
+    transaction_id: uuid.UUID,
+    payload: InterventionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> InterventionOut:
+    """Run one persisted HITL conversation turn before the final decision.
+
+    The agent can guide and record verification, but it cannot transfer money.
+    The existing ``/{transaction_id}/decision`` endpoint remains the only
+    endpoint that completes a transfer.
+    """
+    transaction = db.scalar(select(Transaction).where(
+        Transaction.id == transaction_id,
+        Transaction.user_id == current_user.id,
+    ))
+    if transaction is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+    if transaction.transaction_status != TransactionStatus.AWAITING_DECISION:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Transaction is not awaiting a decision")
+
+    result = intervention_graph.invoke({
+        "db": db,
+        "transaction_id": transaction_id,
+        "action": payload.action,
+        "response": payload.response,
+    })
+
+    if payload.action == "trust_recipient":
+        trusted = db.scalar(select(TrustedRecipient).where(
+            TrustedRecipient.user_id == current_user.id,
+            TrustedRecipient.account_number == transaction.payee_account,
+            TrustedRecipient.bank_code == transaction.bank_code,
+        ))
+        if trusted is None:
+            db.add(TrustedRecipient(
+                user_id=current_user.id,
+                account_number=transaction.payee_account,
+                recipient_name=transaction.payee_name,
+                bank_code=transaction.bank_code,
+                trusted_at=_utcnow(),
+            ))
+            add_audit_log(db, action="trusted_recipient.created_from_intervention",
+                          actor_id=current_user.id, resource_type="transaction",
+                          resource_id=transaction.id)
+            db.commit()
+
+    if payload.action == "cancel":
+        now = _utcnow()
+        transaction.transaction_status = TransactionStatus.CANCELLED
+        transaction.cancelled_at = now
+        add_audit_log(db, action="transaction.cancelled_from_intervention",
+                      actor_id=current_user.id, resource_type="transaction",
+                      resource_id=transaction.id)
+        db.commit()
+
+    warning = result.get("warning")
+    return InterventionOut(
+        transaction_id=transaction.id,
+        warning_id=warning.id if warning else None,
+        step=result["step"],
+        total_steps=4,
+        node_name=result["node_name"],
+        message=result["message"],
+        question=result.get("question"),
+        suggested_actions=result.get("suggested_actions", []),
+        risk_factors=result.get("risk_factors", []),
+        decision_ready=result.get("decision_ready", False),
+        can_proceed=result.get("can_proceed", False),
+    )
+
+
+@router.post("/{transaction_id}/scam-report", response_model=ScamReportOut, status_code=status.HTTP_201_CREATED)
+def create_scam_report(
+    transaction_id: uuid.UUID,
+    payload: ScamReportCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ScamReport:
+    """Store user feedback as reviewable evidence; never auto-blacklist once."""
+    transaction = db.scalar(select(Transaction).where(
+        Transaction.id == transaction_id,
+        Transaction.user_id == current_user.id,
+    ))
+    if transaction is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+    report = ScamReport(
+        user_id=current_user.id,
+        transaction_id=transaction.id,
+        report_type=payload.report_type,
+        description=payload.description,
+    )
+    db.add(report)
+    db.flush()
+    add_audit_log(db, action="scam_report.created", actor_id=current_user.id,
+                  resource_type="scam_report", resource_id=report.id,
+                  metadata={"report_type": payload.report_type})
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+@router.post("/{transaction_id}/decision", response_model=DecisionResponse)
+def submit_decision(
+    transaction_id: uuid.UUID,
+    payload: DecisionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DecisionResponse:
+    """Record the human decision; the server enforces warning countdowns."""
+    transaction = db.scalar(
+        select(Transaction)
+        .where(Transaction.id == transaction_id, Transaction.user_id == current_user.id)
+        .with_for_update()
+    )
+    if transaction is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy giao dịch")
+    if transaction.transaction_status != TransactionStatus.AWAITING_DECISION:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Giao dịch này đã được xử lý hoặc không còn chờ quyết định",
+        )
+
+    active_guardian = db.scalar(
+        select(ScamGuardianSession)
+        .where(
+            ScamGuardianSession.user_id == current_user.id,
+            ScamGuardianSession.status == "active",
+            or_(
+                ScamGuardianSession.agent_action == "STOP",
+                # A degraded agent is not a scam verdict, but transfers must
+                # still wait until a trusted risk decision is available.
+                ScamGuardianSession.scam_type == "agent_unavailable",
+            ),
+        )
+        .order_by(desc(ScamGuardianSession.max_risk_score))
+        .limit(1)
+    )
+    if (
+        active_guardian is not None
+        and payload.decision == WarningDecision.PROCEEDED
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Giao dịch bị tạm chặn vì Scam Guardian chưa có quyết định tin cậy "
+                f"(action={active_guardian.agent_action}, "
+                f"risk={active_guardian.max_risk_score}/100). "
+                "Hãy kết thúc cuộc gọi hoặc thử lại khi Guardian hoạt động ổn định."
+            ),
+        )
+
+    warning = db.scalar(
+        select(TransactionWarning)
+        .where(TransactionWarning.transaction_id == transaction.id)
+        .order_by(desc(TransactionWarning.displayed_at))
+        .limit(1)
+    )
+    now = _utcnow()
+    requires_face_verification = False
+
+    if warning is not None:
+        if payload.decision == WarningDecision.PROCEEDED:
+            available_at = warning.displayed_at + timedelta(seconds=warning.countdown_seconds)
+            if now < available_at:
+                remaining = max(1, int((available_at - now).total_seconds()))
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Vui lòng chờ hết thời gian cảnh báo ({remaining} giây)",
+                )
+            if False:  # PIN is the only confirmation step in the transfer flow.
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Bạn cần xác nhận đã kiểm tra lại thông tin trước khi tiếp tục",
+                )
+        warning.user_decision = payload.decision
+        warning.verification_confirmed = payload.verification_confirmed
+        warning.verification_method = payload.verification_method
+        warning.decided_at = now
+
+    if payload.decision == WarningDecision.CANCELLED:
+        transaction.transaction_status = TransactionStatus.CANCELLED
+        transaction.cancelled_at = now
+        action = "transaction.cancelled"
+    else:
+        latest_assessment = db.scalar(
+            select(TransactionRiskAssessment)
+            .where(TransactionRiskAssessment.transaction_id == transaction.id)
+            .order_by(desc(TransactionRiskAssessment.created_at))
+            .limit(1)
+        )
+        requires_face_verification = requires_transfer_face_verification(
+            amount=transaction.amount,
+            risk_level=latest_assessment.risk_level if latest_assessment else None,
+            blacklist_match_found=bool(
+                latest_assessment and latest_assessment.blacklist_match_found
+            ),
+        )
+        if requires_face_verification:
+            if not payload.face_verification_token:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Giao dịch này phải được xác thực khuôn mặt trước khi hoàn tất.")
+            try:
+                decode_face_verification_token(
+                    payload.face_verification_token,
+                    user_id=str(current_user.id),
+                    transaction_id=str(transaction.id),
+                    amount=transaction.amount,
+                )
+            except (JWTError, ValueError):
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Xác thực khuôn mặt không hợp lệ hoặc đã hết hạn.") from None
+        is_internal_timi_transfer = is_timi_bank(transaction.bank_code)
+        if is_internal_timi_transfer:
+            try:
+                locked_user, timi_recipient = lock_timi_transfer_parties(
+                    db,
+                    sender_user_id=current_user.id,
+                    recipient_account_number=transaction.payee_account,
+                )
+            except TimiSelfTransfer as exc:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+            except TimiTransferError as exc:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        else:
+            locked_user = db.scalar(
+                select(User).where(User.id == current_user.id).with_for_update()
+            )
+            timi_recipient = None
+        if not requires_face_verification and (locked_user is None or not locked_user.transaction_pin_hash):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Bạn chưa thiết lập mã PIN giao dịch. Hãy thiết lập PIN trước khi chuyển tiền.",
+            )
+        if not requires_face_verification and (
+            not payload.pin or not verify_password(payload.pin, locked_user.transaction_pin_hash)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Mã PIN giao dịch không đúng.",
+            )
+        if locked_user is None or locked_user.balance < transaction.amount:
+            transaction.transaction_status = TransactionStatus.FAILED
+            add_audit_log(
+                db,
+                action="transaction.failed_insufficient_balance",
+                actor_id=current_user.id,
+                resource_type="transaction",
+                resource_id=transaction.id,
+                metadata={"amount": transaction.amount},
+            )
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Số dư không đủ")
+        transaction.transaction_status = TransactionStatus.PROCESSING
+        if is_internal_timi_transfer:
+            try:
+                apply_timi_transfer(
+                    db,
+                    transaction=transaction,
+                    sender=locked_user,
+                    recipient=timi_recipient,
+                )
+            except InsufficientTimiBalance:
+                # The precheck above normally catches this. Keeping the domain
+                # check here makes the service safe if this block is reused.
+                transaction.transaction_status = TransactionStatus.FAILED
+                db.commit()
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Số dư không đủ") from None
+        else:
+            locked_user.balance -= transaction.amount
+        transaction.transaction_status = TransactionStatus.COMPLETED
+        transaction.completed_at = now
+        _sync_completed_recipient(db, transaction)
+        action = "transaction.proceeded"
+
+    if warning is not None:
+        # Lưu dấu vết HITL riêng, không đưa câu trả lời vào audit log/front-end logs.
+        from src.app.models.intervention_log import InterventionLog
+
+        db.add(
+            InterventionLog(
+                transaction_id=transaction.id,
+                warning_id=warning.id,
+                node_name="user_decision",
+                user_response="\n".join(payload.verification_answers) or None,
+                suggested_actions=risk_rules.verification_questions(warning.warning_level),
+            )
+        )
+
+    add_audit_log(
+        db,
+        action=action,
+        actor_id=current_user.id,
+        resource_type="transaction",
+        resource_id=transaction.id,
+        metadata={
+            "warning_id": str(warning.id) if warning is not None else None,
+            "decision": payload.decision,
+            "pin_verified": payload.decision == WarningDecision.PROCEEDED and not requires_face_verification,
+            "face_verified": payload.decision == WarningDecision.PROCEEDED and requires_face_verification,
+            "internal_timi_transfer": payload.decision == WarningDecision.PROCEEDED and is_timi_bank(transaction.bank_code),
+        },
+    )
+    db.commit()
+    return DecisionResponse(
+        transaction_id=transaction.id,
+        transaction_status=transaction.transaction_status,
+        warning_id=warning.id if warning is not None else None,
+        decided_at=now,
+    )
+
+
+_HISTORY_TIME_ZONE = ZoneInfo("Asia/Ho_Chi_Minh")
+_HISTORY_DEFAULT_PAGE_SIZE = 20
+_HISTORY_MAX_PAGE_SIZE = 50
+
+
+def _encode_history_cursor(transaction: Transaction) -> str:
+    payload = {
+        "created_at": transaction.created_at.astimezone(UTC).isoformat(),
+        "id": str(transaction.id),
+    }
+    secret = get_settings().history_cursor_secret or get_settings().jwt_secret_key
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+    return Fernet(key).encrypt(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii")
+
+
+def _decode_history_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        secret = get_settings().history_cursor_secret or get_settings().jwt_secret_key
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+        payload = json.loads(Fernet(key).decrypt(cursor.encode("ascii")).decode("utf-8"))
+        created_at = datetime.fromisoformat(payload["created_at"])
+        transaction_id = uuid.UUID(payload["id"])
+        if created_at.tzinfo is None:
+            raise ValueError("cursor timestamp has no timezone")
+        return created_at.astimezone(UTC), transaction_id
+    except (InvalidToken, KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Cursor lịch sử giao dịch không hợp lệ") from None
+
+
+def _history_item(
+    transaction: Transaction,
+    sender_user: User | None,
+    risk_level: str | None,
+    risk_reason: str | None,
+    *,
+    current_user_id: uuid.UUID,
+) -> dict[str, object]:
+    is_incoming_timi_transfer = transaction.timi_recipient_user_id == current_user_id
+    return {
+        "id": transaction.id,
+        "payee_account": transaction.payee_account,
+        "payee_name": transaction.payee_name,
+        # Kept for compatibility with older clients. New clients should use
+        # counterparty_* because it works for both directions.
+        "direction": "incoming" if is_incoming_timi_transfer else "outgoing",
+        "counterparty_name": (
+            sender_user.full_name
+            if is_incoming_timi_transfer and sender_user is not None
+            else transaction.payee_name
+        ),
+        "counterparty_account": (
+            sender_user.phone
+            if is_incoming_timi_transfer and sender_user is not None
+            else transaction.payee_account
+        ),
+        "bank_code": transaction.bank_code,
+        "amount": transaction.amount,
+        "currency": transaction.currency,
+        "note": transaction.note,
+        "transaction_status": transaction.transaction_status,
+        "created_at": transaction.created_at,
+        "completed_at": transaction.completed_at,
+        "cancelled_at": transaction.cancelled_at,
+        "risk_level": risk_level,
+        "risk_reason": risk_reason,
+    }
+
+
+@router.get("/history/summary", response_model=TransactionHistorySummary)
+def history_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TransactionHistorySummary:
+    """Small indexed aggregate used for the transfer page's daily limit."""
+    local_now = datetime.now(_HISTORY_TIME_ZONE)
+    local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    completed_outgoing_today = db.scalar(
+        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            Transaction.user_id == current_user.id,
+            Transaction.transaction_status == TransactionStatus.COMPLETED,
+            Transaction.created_at >= local_start.astimezone(UTC),
+        )
+    )
+    total_transactions = db.scalar(
+        select(func.count(Transaction.id)).where(
+            or_(
+                Transaction.user_id == current_user.id,
+                Transaction.timi_recipient_user_id == current_user.id,
+            )
+        )
+    )
+    return TransactionHistorySummary(
+        completed_outgoing_today=int(completed_outgoing_today or 0),
+        total_transactions=int(total_transactions or 0),
+    )
+
+
+@router.get("/security-summary")
+def security_summary(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    """Return aggregate protection metrics across all users."""
+    blocked_transactions = db.scalar(
+        select(func.count(func.distinct(Transaction.id)))
+        .join(
+            TransactionRiskAssessment,
+            TransactionRiskAssessment.transaction_id == Transaction.id,
+        )
+        .where(
+            TransactionRiskAssessment.risk_level == RiskLevel.HIGH,
+            Transaction.transaction_status.in_([
+                TransactionStatus.CANCELLED,
+                TransactionStatus.FAILED,
+            ]),
+        )
+    ) or 0
+    return {"blocked_transactions": int(blocked_transactions)}
+
+
+@router.get("/recent-contacts")
+def recent_contacts(
+    limit: int = 8,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict[str, object]]:
+    """Return completed outgoing recipients for the transfer form.
+
+    A recipient remains selectable after a completed transfer even when the
+    original assessment was high risk: selecting it starts a fresh lookup and
+    risk assessment for the new transfer. Administrator accounts are never
+    listed as transfer recipients.
+    """
+    page_size = min(max(limit, 1), 10)
+    recipient = aliased(User)
+
+    rows = db.execute(
+        select(Transaction, recipient)
+        .outerjoin(recipient, Transaction.timi_recipient_user_id == recipient.id)
+        .where(
+            Transaction.user_id == current_user.id,
+            Transaction.transaction_status == TransactionStatus.COMPLETED,
+        )
+        .order_by(desc(Transaction.created_at), desc(Transaction.id))
+        .limit(50)
+    ).all()
+
+    account_numbers = {
+        transaction.payee_account.replace(" ", "").strip()
+        for transaction, _recipient_user in rows
+    }
+    blacklist_entries = db.scalars(
+        select(Blacklist).where(
+            Blacklist.entity_type == "account",
+            Blacklist.entity_value.in_(account_numbers),
+            Blacklist.is_active.is_(True),
+        )
+    ).all() if account_numbers else []
+    blacklisted_accounts = {
+        (
+            entry.entity_value.replace(" ", "").strip(),
+            normalize_bank_name(entry.bank),
+        )
+        for entry in blacklist_entries
+    }
+
+    contacts: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    own_phone = (current_user.phone or "").replace(" ", "").strip()
+    own_name = current_user.full_name.strip().casefold()
+    for transaction, recipient_user in rows:
+        account = transaction.payee_account.replace(" ", "").strip()
+        bank_code = transaction.bank_code or ""
+        if (account, normalize_bank_name(bank_code)) in blacklisted_accounts:
+            continue
+        if recipient_user and recipient_user.role == UserRole.ADMIN.value:
+            continue
+        recipient_name = (
+            recipient_user.full_name if recipient_user else transaction.payee_name
+        ).strip()
+        if (
+            (recipient_user and recipient_user.id == current_user.id)
+            or (own_phone and account == own_phone)
+            or (recipient_name and recipient_name.casefold() == own_name)
+        ):
+            continue
+        key = (account, bank_code)
+        if not account or key in seen:
+            continue
+        seen.add(key)
+        contacts.append(
+            {
+                "id": str(recipient_user.id if recipient_user else transaction.id),
+                "full_name": recipient_name,
+                "account_number": account,
+                "bank_code": bank_code,
+                "role": recipient_user.role if recipient_user else None,
+                "avatar_url": recipient_user.avatar_url if recipient_user else None,
+                "last_transferred_at": transaction.created_at,
+            }
+        )
+        if len(contacts) >= page_size:
+            break
+    return contacts
+
+
+@router.get("/history", response_model=TransactionHistoryPage)
+def history(
+    limit: int = _HISTORY_DEFAULT_PAGE_SIZE,
+    cursor: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TransactionHistoryPage:
+    """Read a stable transaction page without offset scans or N+1 queries."""
+    page_size = min(max(limit, 1), _HISTORY_MAX_PAGE_SIZE)
+    seek_created_at: datetime | None = None
+    seek_transaction_id: uuid.UUID | None = None
+    if cursor:
+        seek_created_at, seek_transaction_id = _decode_history_cursor(cursor)
+
+    seek_filter = (
+        or_(
+            Transaction.created_at < seek_created_at,
+            and_(
+                Transaction.created_at == seek_created_at,
+                Transaction.id < seek_transaction_id,
+            ),
+        )
+        if seek_created_at is not None and seek_transaction_id is not None
+        else None
+    )
+    outgoing = select(Transaction.id.label("transaction_id")).where(
+        Transaction.user_id == current_user.id
+    )
+    incoming = select(Transaction.id.label("transaction_id")).where(
+        Transaction.timi_recipient_user_id == current_user.id
+    )
+    if seek_filter is not None:
+        outgoing = outgoing.where(seek_filter)
+        incoming = incoming.where(seek_filter)
+    visible_transactions = union_all(outgoing, incoming).subquery("visible_transactions")
+
+    sender = aliased(User)
+    latest_assessment = lateral(
+        select(
+            TransactionRiskAssessment.risk_level.label("risk_level"),
+            TransactionRiskAssessment.explanation.label("risk_reason"),
+        )
+        .where(TransactionRiskAssessment.transaction_id == Transaction.id)
+        .order_by(desc(TransactionRiskAssessment.created_at))
+        .limit(1)
+    ).alias("latest_assessment")
+    rows = db.execute(
+        select(
+            Transaction,
+            sender,
+            latest_assessment.c.risk_level,
+            latest_assessment.c.risk_reason,
+        )
+        .join(visible_transactions, visible_transactions.c.transaction_id == Transaction.id)
+        .outerjoin(sender, Transaction.user_id == sender.id)
+        .outerjoin(latest_assessment, true())
+        .order_by(desc(Transaction.created_at), desc(Transaction.id))
+        .limit(page_size + 1)
+    ).all()
+    has_next_page = len(rows) > page_size
+    page_rows = rows[:page_size]
+    return TransactionHistoryPage(
+        items=[
+            _history_item(
+                transaction,
+                sender_user,
+                risk_level,
+                risk_reason,
+                current_user_id=current_user.id,
+            )
+            for transaction, sender_user, risk_level, risk_reason in page_rows
+        ],
+        next_cursor=(
+            _encode_history_cursor(page_rows[-1][0])
+            if has_next_page and page_rows
+            else None
+        ),
+    )
+
+
+@router.post("/trusted-recipients", status_code=status.HTTP_201_CREATED)
+def mark_trusted_recipient(
+    payload: TrustedRecipientCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    account_number = payload.account_number.replace(" ", "").strip()
+    bank_code = normalize_bank_name(payload.bank_code)
+    existing = db.scalar(
+        select(TrustedRecipient).where(
+            TrustedRecipient.user_id == current_user.id,
+            TrustedRecipient.account_number == account_number,
+            TrustedRecipient.bank_code == bank_code,
+        )
+    )
+    if existing is not None:
+        return {"status": "already_trusted", "recipient_id": str(existing.id)}
+
+    recipient = TrustedRecipient(
+        user_id=current_user.id,
+        account_number=account_number,
+        recipient_name=payload.recipient_name.strip(),
+        bank_code=bank_code,
+        trusted_at=_utcnow(),
+    )
+    db.add(recipient)
+    add_audit_log(
+        db,
+        action="trusted_recipient.created",
+        actor_id=current_user.id,
+        resource_type="trusted_recipient",
+        resource_id=recipient.id,
+    )
+    db.commit()
+    return {"status": "trusted", "recipient_id": str(recipient.id)}
+
+
+@router.post("/warnings/{warning_id}/feedback", status_code=status.HTTP_201_CREATED)
+def create_warning_feedback(
+    warning_id: uuid.UUID,
+    payload: WarningFeedbackCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    warning = db.scalar(
+        select(TransactionWarning)
+        .join(Transaction)
+        .where(TransactionWarning.id == warning_id, Transaction.user_id == current_user.id)
+    )
+    if warning is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy cảnh báo")
+    if warning.feedback is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cảnh báo đã có phản hồi")
+
+    feedback = WarningFeedback(
+        warning_id=warning.id,
+        user_id=current_user.id,
+        feedback_type=payload.feedback_type,
+        comment=payload.comment,
+    )
+    db.add(feedback)
+    db.flush()
+    promote_blacklist_if_eligible(db, warning.transaction.payee_account, warning.transaction.bank_code, current_user.id)
+    add_audit_log(
+        db,
+        action="transaction_warning.feedback_created",
+        actor_id=current_user.id,
+        resource_type="transaction_warning",
+        resource_id=warning.id,
+        metadata={"feedback_type": payload.feedback_type},
+    )
+    db.commit()
+    return {"status": "created", "feedback_id": str(feedback.id)}

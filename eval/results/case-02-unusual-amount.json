@@ -1,0 +1,59 @@
+{
+  "case_id": "case-02-unusual-amount",
+  "captured_at": "2026-08-20T13:55:02.162161Z",
+  "http_status": 201,
+  "latency_ms": null,
+  "risk_level": "medium",
+  "risk_score": 0.45,
+  "signals": [
+    {
+      "signal_type": "behavioral_amount_anomaly",
+      "severity": "high",
+      "score": 0.45,
+      "explanation": "Số tiền này cao bất thường so với các giao dịch hoàn tất gần đây của bạn (khoảng 55 lần mức điển hình).",
+      "evidence": {
+        "amount_multiple": 54.5,
+        "median_amount_vnd": 550000,
+        "history_window_days": 90,
+        "baseline_sample_size": 4
+      }
+    }
+  ],
+  "requires_face_verification": true,
+  "decision": "require_user_decision",
+  "response": {
+    "transaction_id": "6afc3eeb-58bd-4dda-a766-5445d384de36",
+    "assessment_id": "21ae18e4-25f5-49ea-b420-968940e6e621",
+    "risk_score": 0.45,
+    "risk_level": "medium",
+    "signals": [
+      {
+        "signal_type": "behavioral_amount_anomaly",
+        "severity": "high",
+        "score": 0.45,
+        "explanation": "Số tiền này cao bất thường so với các giao dịch hoàn tất gần đây của bạn (khoảng 55 lần mức điển hình).",
+        "evidence": {
+          "amount_multiple": 54.5,
+          "median_amount_vnd": 550000,
+          "history_window_days": 90,
+          "baseline_sample_size": 4
+        }
+      }
+    ],
+    "explanation": "Các dấu hiệu được hệ thống đối chiếu:\n- Số tiền này cao bất thường so với các giao dịch hoàn tất gần đây của bạn (khoảng 55 lần mức điển hình).",
+    "recommendation": "Hãy kiểm tra lại người nhận trước khi tiếp tục giao dịch.",
+    "should_warn": true,
+    "requires_face_verification": true,
+    "warning": {
+      "id": "2e1f3ea9-c711-4986-9636-b82cc21e85e5",
+      "warning_level": "medium",
+      "title": "Cần xác minh thêm",
+      "message": "Hãy kiểm tra lại người nhận trước khi tiếp tục giao dịch.",
+      "transparency_reason": "Các dấu hiệu được hệ thống đối chiếu:\n- Số tiền này cao bất thường so với các giao dịch hoàn tất gần đây của bạn (khoảng 55 lần mức điển hình).",
+      "displayed_at": "2026-08-20T13:55:02.162161Z",
+      "countdown_seconds": 30
+    },
+    "requires_user_decision": true,
+    "intervention": null
+  }
+}

@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply w-full;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+/* The login shell owns the viewport height; global roots must not add another one. */
+.login-page-shell {
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  .login-left-column {
+    align-items: safe center;
+    padding: 3rem;
+  }
+
+  .login-hero-image {
+    height: 580px;
+  }
+
+  .login-form-column {
+    justify-content: safe center;
+    padding-block: 1.5rem;
+  }
+
+  .login-brand {
+    margin-bottom: 1rem;
+  }
+
+  .login-card {
+    padding: 1.5rem;
+  }
+
+  .login-card > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1rem;
+  }
+
+  .login-form-fields > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1rem;
+  }
+
+  .login-footer {
+    margin-top: 1rem;
+  }
+}
+
+/* The Google button adds a complete sign-in method to the existing card.
+   Keep every control visible on common laptop-height viewports without
+   changing the type scale or visual language of the login screen. */
+@media (min-width: 1024px) and (max-height: 820px) {
+  .login-form-column {
+    padding-block: 0.75rem;
+  }
+
+  .login-card {
+    padding: 1.25rem;
+  }
+
+  .login-card > :not([hidden]) ~ :not([hidden]),
+  .login-form-fields > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.75rem;
+  }
+
+  .login-form-fields input {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .login-form-fields > button {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+}
+
+/* Hide scrollbar for horizontal scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+
+@keyframes timi-chibi-walk {
+  0%, 100% { transform: translateX(0) scaleX(1); }
+  46% { transform: translateX(-22px) scaleX(1); }
+  50% { transform: translateX(-22px) scaleX(-1); }
+  96% { transform: translateX(0) scaleX(-1); }
+}
+
+@keyframes timi-chibi-arm-left {
+  0%, 100% { transform: rotate(-34deg); }
+  50% { transform: rotate(-12deg); }
+}
+
+@keyframes timi-chibi-arm-right {
+  0%, 100% { transform: rotate(34deg); }
+  50% { transform: rotate(12deg); }
+}
+
+@keyframes timi-chibi-leg-left {
+  0%, 100% { transform: translateY(0) rotate(7deg); }
+  50% { transform: translateY(-3px) rotate(-7deg); }
+}
+
+@keyframes timi-chibi-leg-right {
+  0%, 100% { transform: translateY(-3px) rotate(-7deg); }
+  50% { transform: translateY(0) rotate(7deg); }
+}
+
+.timi-chibi-walking { animation: timi-chibi-walk 4.8s ease-in-out infinite; }
+.timi-chibi-arm-left { animation: timi-chibi-arm-left 0.7s ease-in-out infinite; }
+.timi-chibi-arm-right { animation: timi-chibi-arm-right 0.7s ease-in-out infinite; }
+.timi-chibi-leg-left { animation: timi-chibi-leg-left 0.7s ease-in-out infinite; }
+.timi-chibi-leg-right { animation: timi-chibi-leg-right 0.7s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .timi-chibi-walking,
+  .timi-chibi-arm-left,
+  .timi-chibi-arm-right,
+  .timi-chibi-leg-left,
+  .timi-chibi-leg-right { animation: none; }
+}
+.auth-form-icon {
+  color: #93c5fd !important;
+  stroke: #93c5fd !important;
+  opacity: 1 !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}

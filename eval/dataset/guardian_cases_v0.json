@@ -1,0 +1,489 @@
+[
+  {
+    "id": "safe_001",
+    "category": "safe",
+    "description": "Cuộc gọi vận chuyển bình thường",
+    "transcript": [
+      {"speaker": "caller", "text": "Chào anh, em gọi từ bên giao hàng FastShip. Đơn hàng của anh sẽ đến chiều nay khoảng 3-5 giờ."},
+      {"speaker": "user", "text": "Ok em, cảm ơn."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 20],
+      "must_have_signals": [],
+      "must_not_have_signals": ["otp_request", "authority_impersonation", "money_transfer_request"]
+    }
+  },
+  {
+    "id": "safe_002",
+    "category": "safe",
+    "description": "Bạn bè hỏi thăm",
+    "transcript": [
+      {"speaker": "caller", "text": "Alo, tao đây. Chiều nay đi nhậu không?"},
+      {"speaker": "user", "text": "Được, 6 giờ gặp."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 15],
+      "must_have_signals": [],
+      "must_not_have_signals": ["bank_impersonation", "otp_request"]
+    }
+  },
+  {
+    "id": "safe_003",
+    "category": "safe",
+    "description": "Ngân hàng gọi thật sự (không yêu cầu OTP/chuyển tiền)",
+    "transcript": [
+      {"speaker": "caller", "text": "Xin chào, tôi gọi từ ngân hàng Timi. Chúng tôi xác nhận anh vừa mở thẻ tín dụng thành công. Nếu cần hỗ trợ thêm anh có thể đến chi nhánh."},
+      {"speaker": "user", "text": "Cảm ơn."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 25],
+      "must_have_signals": [],
+      "must_not_have_signals": ["otp_request", "money_transfer_request", "account_lock_threat"]
+    }
+  },
+  {
+    "id": "monitor_001",
+    "category": "monitor",
+    "description": "Nhân viên ngân hàng gọi nhưng chưa có hành động nguy hiểm",
+    "transcript": [
+      {"speaker": "caller", "text": "Xin chào, tôi là nhân viên bộ phận chăm sóc khách hàng ngân hàng. Hệ thống ghi nhận có giao dịch hơi bất thường. Anh có đang dùng thẻ không ạ?"},
+      {"speaker": "user", "text": "Tôi không thấy gì cả."}
+    ],
+    "expected": {
+      "recommended_action": "MONITOR",
+      "risk_level": "warning",
+      "risk_score_range": [25, 45],
+      "must_have_signals": ["bank_impersonation"],
+      "must_not_have_signals": ["otp_request", "money_transfer_request"]
+    }
+  },
+  {
+    "id": "monitor_002",
+    "category": "monitor",
+    "description": "Urgency nhẹ nhưng chưa có đe dọa khóa tài khoản",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh ơi, có vẻ tài khoản anh đang có vấn đề. Anh nên kiểm tra sớm hôm nay."}
+    ],
+    "expected": {
+      "recommended_action": "MONITOR",
+      "risk_level": "warning",
+      "risk_score_range": [20, 40],
+      "must_have_signals": [],
+      "must_not_have_signals": ["otp_request", "account_lock_threat"]
+    }
+  },
+  {
+    "id": "pause_001",
+    "category": "pause",
+    "description": "Đe dọa khóa tài khoản + urgency",
+    "transcript": [
+      {"speaker": "caller", "text": "Tôi là nhân viên bảo mật ngân hàng. Tài khoản của anh sắp bị khóa trong vòng 30 phút nếu không xác minh. Anh cần hợp tác ngay."}
+    ],
+    "expected": {
+      "recommended_action": "PAUSE",
+      "risk_level": "high",
+      "risk_score_range": [55, 75],
+      "must_have_signals": ["bank_impersonation", "account_lock_threat", "urgency"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "pause_002",
+    "category": "pause",
+    "description": "Yêu cầu không được nói với ai + authority nhẹ",
+    "transcript": [
+      {"speaker": "caller", "text": "Đây là cuộc gọi từ cơ quan điều tra. Anh đừng nói chuyện này với ai cả, kể cả người nhà. Chúng tôi đang điều tra."}
+    ],
+    "expected": {
+      "recommended_action": "PAUSE",
+      "risk_level": "high",
+      "risk_score_range": [50, 75],
+      "must_have_signals": ["authority_claim", "secrecy_request"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_001",
+    "category": "stop",
+    "description": "Công an giả + đe dọa khởi tố + yêu cầu chuyển tiền",
+    "transcript": [
+      {"speaker": "caller", "text": "Tôi là công an phường. Tài khoản anh liên quan đường dây rửa tiền. Nếu không chuyển tiền vào tài khoản tạm giữ trong 15 phút sẽ bị khởi tố. Không được gọi cho ngân hàng hay ai hết."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [85, 100],
+      "must_have_signals": ["authority_impersonation", "legal_threat", "money_transfer_request", "prevent_external_verification"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_002",
+    "category": "stop",
+    "description": "OTP phishing rõ ràng",
+    "transcript": [
+      {"speaker": "caller", "text": "Bên bảo mật ngân hàng đây. Anh vừa nhận mã OTP đúng không? Anh đọc giúp tôi mã đó để chúng tôi xác minh và mở khóa tài khoản giúp anh."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [80, 100],
+      "must_have_signals": ["bank_impersonation", "otp_request", "credential_social_engineering"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_003",
+    "category": "stop",
+    "description": "Tài khoản an toàn + chuyển tiền",
+    "transcript": [
+      {"speaker": "caller", "text": "Để bảo vệ tài sản, anh hãy chuyển toàn bộ số tiền sang tài khoản an toàn do ngân hàng chỉ định. Đây là tài khoản tạm giữ."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [80, 100],
+      "must_have_signals": ["safe_account_scam", "money_transfer_request"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_004",
+    "category": "stop",
+    "description": "Remote access + OTP",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh cài AnyDesk đi, tôi hướng dẫn xử lý. Sau đó đọc mã OTP gửi về điện thoại cho tôi."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [85, 100],
+      "must_have_signals": ["remote_access_request", "otp_request"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_005",
+    "category": "stop",
+    "description": "Progressive scam - xây dựng rồi tấn công",
+    "transcript": [
+      {"speaker": "caller", "text": "Chào anh, tôi bên chăm sóc khách hàng ngân hàng. Anh gần đây có giao dịch lớn không?"},
+      {"speaker": "user", "text": "Không."},
+      {"speaker": "caller", "text": "Hệ thống báo có dấu hiệu bất thường. Để bảo vệ, anh cần chuyển tiền vào tài khoản tạm giữ ngay và cung cấp mã OTP."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [80, 100],
+      "must_have_signals": ["bank_impersonation", "money_transfer_request", "otp_request"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "edge_001",
+    "category": "edge",
+    "description": "Chỉ nói từ 'OTP' nhưng không yêu cầu",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh nhớ không chia sẻ mã OTP với bất kỳ ai nhé."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 20],
+      "must_have_signals": [],
+      "must_not_have_signals": ["otp_request"]
+    }
+  },
+  {
+    "id": "edge_002",
+    "category": "edge",
+    "description": "Nói về công an nhưng là kể chuyện",
+    "transcript": [
+      {"speaker": "caller", "text": "Hôm qua tui thấy công an làm việc gần nhà, đông lắm."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 15],
+      "must_have_signals": [],
+      "must_not_have_signals": ["authority_impersonation"]
+    }
+  },
+  {
+    "id": "edge_003",
+    "category": "edge",
+    "description": "Yêu cầu mã OTP nhưng ngữ cảnh mơ hồ",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh gửi mã xác thực giúp em với."}
+    ],
+    "expected": {
+      "recommended_action": "PAUSE",
+      "risk_level": "high",
+      "risk_score_range": [50, 80],
+      "must_have_signals": ["otp_request"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "edge_004",
+    "category": "edge",
+    "description": "Screen sharing request",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh bật chia sẻ màn hình để tôi xem giúp lỗi trên app ngân hàng."}
+    ],
+    "expected": {
+      "recommended_action": "PAUSE",
+      "risk_level": "high",
+      "risk_score_range": [55, 80],
+      "must_have_signals": ["screen_sharing_request"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_006",
+    "category": "stop",
+    "description": "Kết hợp authority + account lock + secrecy",
+    "transcript": [
+      {"speaker": "caller", "text": "Tôi là cán bộ công an. Tài khoản anh sẽ bị phong tỏa. Tuyệt đối không được nói với ai. Phải làm theo hướng dẫn của tôi ngay."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [85, 100],
+      "must_have_signals": ["authority_impersonation", "account_lock_threat", "secrecy_request"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "monitor_003",
+    "category": "monitor",
+    "description": "Chỉ có urgency nhẹ",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh xử lý nhanh giúp em với, hôm nay là hạn cuối."}
+    ],
+    "expected": {
+      "recommended_action": "MONITOR",
+      "risk_level": "warning",
+      "risk_score_range": [15, 40],
+      "must_have_signals": ["urgency"],
+      "must_not_have_signals": ["otp_request", "money_transfer_request"]
+    }
+  },
+  {
+    "id": "pause_003",
+    "category": "pause",
+    "description": "Ngăn cản xác minh bên ngoài",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh đừng gọi tổng đài ngân hàng. Chỉ làm theo tôi thôi, nếu gọi sẽ làm hỏng quá trình xác minh."}
+    ],
+    "expected": {
+      "recommended_action": "PAUSE",
+      "risk_level": "high",
+      "risk_score_range": [50, 75],
+      "must_have_signals": ["prevent_external_verification"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_007",
+    "category": "stop",
+    "description": "Credential social engineering rõ",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh cho tôi biết mã PIN và mật khẩu đăng nhập app để tôi hỗ trợ mở khóa."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [85, 100],
+      "must_have_signals": ["credential_social_engineering"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "safe_004",
+    "category": "safe",
+    "description": "Cuộc gọi hỗ trợ kỹ thuật bình thường",
+    "transcript": [
+      {"speaker": "caller", "text": "Em bên hỗ trợ kỹ thuật app. Anh đang gặp lỗi gì ạ? Em hướng dẫn anh tự khắc phục nhé."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 20],
+      "must_have_signals": [],
+      "must_not_have_signals": ["remote_access_request", "otp_request"]
+    }
+  },
+  {
+    "id": "stop_008",
+    "category": "stop",
+    "description": "Kết hợp nhiều tín hiệu cao",
+    "transcript": [
+      {"speaker": "caller", "text": "Tôi là điều tra viên. Tài khoản anh liên quan vụ án. Phải chuyển tiền vào tài khoản an toàn ngay, đọc OTP và không được ngắt máy hay gọi cho ai."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [90, 100],
+      "must_have_signals": ["authority_impersonation", "money_transfer_request", "otp_request", "prevent_external_verification"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "edge_005",
+    "category": "edge",
+    "description": "Nói chuyện về chuyển tiền bình thường giữa bạn bè",
+    "transcript": [
+      {"speaker": "caller", "text": "Mày chuyển giúp tao 500 nghìn nhé, tối trả."},
+      {"speaker": "user", "text": "Ok."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 25],
+      "must_have_signals": [],
+      "must_not_have_signals": ["safe_account_scam", "authority_impersonation"]
+    }
+  },
+  {
+    "id": "pause_004",
+    "category": "pause",
+    "description": "Urgency + bank impersonation",
+    "transcript": [
+      {"speaker": "caller", "text": "Nhân viên ngân hàng đây. Anh phải xử lý ngay trong 10 phút nếu không tài khoản sẽ bị ảnh hưởng."}
+    ],
+    "expected": {
+      "recommended_action": "PAUSE",
+      "risk_level": "high",
+      "risk_score_range": [55, 75],
+      "must_have_signals": ["bank_impersonation", "urgency"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_009",
+    "category": "stop",
+    "description": "TeamViewer + credential",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh tải TeamViewer về, cho tôi điều khiển máy để sửa lỗi, rồi cung cấp mật khẩu app ngân hàng."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [90, 100],
+      "must_have_signals": ["remote_access_request", "credential_social_engineering"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "monitor_004",
+    "category": "monitor",
+    "description": "Chỉ nhắc đến ngân hàng một cách mơ hồ",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh có dùng app ngân hàng không? Gần đây hay bị lỗi lắm."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 25],
+      "must_have_signals": [],
+      "must_not_have_signals": ["bank_impersonation"]
+    }
+  },
+  {
+    "id": "stop_010",
+    "category": "stop",
+    "description": "Legal threat + secrecy + urgency",
+    "transcript": [
+      {"speaker": "caller", "text": "Vụ án đang điều tra. Nếu anh không hợp tác ngay trong 20 phút sẽ bị khởi tố. Tuyệt đối giữ bí mật."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [80, 100],
+      "must_have_signals": ["legal_threat", "secrecy_request", "urgency"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "edge_006",
+    "category": "edge",
+    "description": "Hỏi OTP nhưng là cảnh báo an toàn",
+    "transcript": [
+      {"speaker": "caller", "text": "Ngân hàng không bao giờ hỏi mã OTP của anh. Nếu ai hỏi thì đó là lừa đảo."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 15],
+      "must_have_signals": [],
+      "must_not_have_signals": ["otp_request"]
+    }
+  },
+  {
+    "id": "pause_005",
+    "category": "pause",
+    "description": "Yêu cầu xác minh nhưng chưa rõ ràng",
+    "transcript": [
+      {"speaker": "caller", "text": "Để xác minh danh tính, anh cần cung cấp một số thông tin bảo mật."}
+    ],
+    "expected": {
+      "recommended_action": "PAUSE",
+      "risk_level": "high",
+      "risk_score_range": [45, 70],
+      "must_have_signals": ["credential_social_engineering"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "safe_005",
+    "category": "safe",
+    "description": "Cuộc gọi từ người thân",
+    "transcript": [
+      {"speaker": "caller", "text": "Con à, mẹ đây. Tối nay về ăn cơm với mẹ nhé."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 10],
+      "must_have_signals": [],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "stop_011",
+    "category": "stop",
+    "description": "Full classic Vietnamese bank scam",
+    "transcript": [
+      {"speaker": "caller", "text": "Xin chào, tôi là cán bộ phòng chống tội phạm công nghệ cao. Tài khoản của anh đang bị lợi dụng. Anh phải chuyển tiền vào tài khoản an toàn ngay lập tức, đọc mã OTP và không được tắt máy hay liên hệ với ai."}
+    ],
+    "expected": {
+      "recommended_action": "STOP",
+      "risk_level": "critical",
+      "risk_score_range": [90, 100],
+      "must_have_signals": ["authority_impersonation", "safe_account_scam", "money_transfer_request", "otp_request", "prevent_external_verification"],
+      "must_not_have_signals": []
+    }
+  },
+  {
+    "id": "edge_007",
+    "category": "edge",
+    "description": "Nói về khóa tài khoản nhưng là tự khóa",
+    "transcript": [
+      {"speaker": "caller", "text": "Anh nhớ khóa tài khoản khi không dùng để bảo mật nhé."}
+    ],
+    "expected": {
+      "recommended_action": "CONTINUE",
+      "risk_level": "safe",
+      "risk_score_range": [0, 15],
+      "must_have_signals": [],
+      "must_not_have_signals": ["account_lock_threat"]
+    }
+  }
+]

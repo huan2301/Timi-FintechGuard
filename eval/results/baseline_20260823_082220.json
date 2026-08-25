@@ -1,0 +1,54 @@
+{
+  "phase": "0",
+  "timestamp_utc": "20260823_082220",
+  "prompt_version": "v0.6-calibrated-evidence-rubric",
+  "evaluation_mode": "model",
+  "dataset": "guardian_cases_v0.json",
+  "metrics": {
+    "total_cases": 1,
+    "schema_ok_count": 1,
+    "schema_ok_rate": 1.0,
+    "availability_rate": 1.0,
+    "action_accuracy": 1.0,
+    "level_accuracy": 1.0,
+    "score_in_range_rate": 1.0,
+    "signal_ok_rate": 1.0,
+    "overall_pass_rate": 1.0,
+    "avg_latency_ms": 2030.0,
+    "resolved_action_accuracy": 1.0,
+    "by_action": {
+      "PAUSE": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "support": 1
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "pause_004",
+      "category": "pause",
+      "description": "Urgency + bank impersonation",
+      "latency_ms": 2030.0,
+      "schema_ok": true,
+      "error": null,
+      "error_metadata": null,
+      "attempts": 1,
+      "predicted_action": "PAUSE",
+      "predicted_level": "high",
+      "predicted_score": 55,
+      "predicted_signals": [
+        "bank_impersonation",
+        "urgency"
+      ],
+      "expected_action": "PAUSE",
+      "expected_level": "high",
+      "action_match": true,
+      "level_match": true,
+      "score_in_range": true,
+      "signal_ok": true,
+      "overall_pass": true
+    }
+  ]
+}

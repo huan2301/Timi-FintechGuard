@@ -1,0 +1,43 @@
+{
+  "case_id": "case-01-safe",
+  "captured_at": "2026-08-15T11:16:07.729531+00:00",
+  "http_status": 201,
+  "latency_ms": 10719,
+  "risk_level": "low",
+  "risk_score": 0.2,
+  "signals": [
+    {
+      "signal_type": "new_payee",
+      "severity": "low",
+      "score": 0.2,
+      "explanation": "Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+      "evidence": {}
+    }
+  ],
+  "requires_face_verification": false,
+  "llm_used": null,
+  "llm_used_note": "Not exposed by the assess response; verify in backend logs if required.",
+  "decision": "require_user_decision",
+  "response": {
+    "transaction_id": "20dbda3b-3011-47aa-ad3c-134cb50ec25b",
+    "assessment_id": "cd7b417b-602f-441d-9499-a44262e4fe6e",
+    "risk_score": 0.2,
+    "risk_level": "low",
+    "signals": [
+      {
+        "signal_type": "new_payee",
+        "severity": "low",
+        "score": 0.2,
+        "explanation": "Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+        "evidence": {}
+      }
+    ],
+    "explanation": "Các dấu hiệu được hệ thống đối chiếu:\n- Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+    "recommendation": "Bạn vẫn là người quyết định cuối cùng cho giao dịch này.",
+    "should_warn": false,
+    "requires_face_verification": false,
+    "warning": null,
+    "requires_user_decision": true,
+    "intervention": null
+  }
+}

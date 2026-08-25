@@ -1,0 +1,59 @@
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://timi.local/eval/golden/case.schema.json",
+  "title": "TimiGoldenCase",
+  "type": "object",
+  "required": ["id", "suite", "version", "priority", "input", "expected"],
+  "properties": {
+    "id": { "type": "string", "minLength": 3 },
+    "suite": {
+      "type": "string",
+      "enum": ["transaction", "guardian", "seasonal", "url_safety", "security_login"]
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "priority": { "type": "string", "enum": ["P0", "P1", "P2"] },
+    "input": { "type": "object" },
+    "context": { "type": "object" },
+    "expected": {
+      "type": "object",
+      "required": ["risk_level", "min_score", "max_score", "must_signals", "must_not_signals"],
+      "properties": {
+        "risk_level": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["low", "medium", "high"] },
+          "minItems": 1
+        },
+        "min_score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "max_score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "must_signals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "must_not_signals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "requires_hitl": { "type": "boolean" },
+        "allow_complete_without_hitl": { "type": "boolean" },
+        "action": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string",
+            "enum": ["CONTINUE", "MONITOR", "PAUSE", "STOP"]
+          }
+        },
+        "season_active": { "type": "boolean" },
+        "season_id": { "type": ["string", "null"] },
+        "stricter": { "type": "boolean" },
+        "blocked": { "type": "boolean" }
+      }
+    },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": true
+}

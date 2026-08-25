@@ -1,0 +1,261 @@
+{
+    "version": "1.0.0",
+    "name": "timi-risk-agent-golden",
+    "description": "Ground-truth cases for Timi risk agent / rule engine evaluation.",
+    "scoring": {
+        "risk_level_match": 1.0,
+        "required_signal_present": 0.5,
+        "forbidden_signal_absent": 0.5,
+        "latency_ms_max": 15000
+    },
+    "cases": [
+        {
+            "id": "GD-01",
+            "manual_case": 1,
+            "title": "Người nhận mới, số tiền nhỏ, note bình thường",
+            "category": "safe_low",
+            "input": {
+                "amount": 50000,
+                "note": "Tra tien an",
+                "payee": "new",
+                "blacklist": false
+            },
+            "expected": {
+                "risk_level_in": [
+                    "safe",
+                    "low"
+                ],
+                "risk_score_max": 0.35,
+                "must_include_signals": [],
+                "may_include_signals": [
+                    "new_payee"
+                ],
+                "must_not_include_signals": [
+                    "blacklist_exact_match",
+                    "scam_pattern_match"
+                ],
+                "should_warn": false,
+                "requires_user_decision": true,
+                "requires_face_verification": false,
+                "hitl": "pin_only"
+            },
+            "result_file": "eval/results/case-01-safe.json",
+            "status": "captured"
+        },
+        {
+            "id": "GD-02",
+            "manual_case": 2,
+            "title": "Người nhận mới, số tiền cao hơn lịch sử",
+            "category": "unusual_amount",
+            "input": {
+                "amount": "higher_than_history",
+                "note": "normal",
+                "payee": "new"
+            },
+            "expected": {
+                "risk_level_in": [
+                    "medium",
+                    "high"
+                ],
+                "must_include_signals_any": [
+                    "unusual_amount",
+                    "behavioral_amount_anomaly"
+                ],
+                "may_include_signals": [
+                    "new_payee"
+                ],
+                "should_warn": true,
+                "hitl": true
+            },
+            "result_file": "eval/results/case-02-unusual-amount.json",
+            "status": "captured"
+        },
+    {
+            "id": "GD-03",
+            "manual_case": 3,
+            "title": "Note scam urgency / phong khoa",
+            "category": "scam_note",
+            "input": {
+                "amount": 500000,
+                "note": "phi mo khoa, chuyen gap, giu bi mat",
+                "payee": "new"
+            },
+            "expected": {
+                "risk_level_in": [
+                    "medium",
+                    "high"
+                ],
+                "must_include_signals_any": [
+                    "suspicious_note",
+                    "scam_pattern_match",
+                    "scam_keyword"
+                ],
+                "should_warn": true,
+                "no_instant_transfer": true,
+                "hitl": true
+            },
+            "result_file": "eval/results/case-03-scam-note.json",
+            "status": "captured"
+        },
+        {
+            "id": "GD-04",
+            "manual_case": 4,
+            "title": "Exact blacklist match",
+            "category": "blacklist",
+            "input": {
+                "payee_account": "blacklist_exact",
+                "amount": 100000
+            },
+            "expected": {
+                "risk_level_in": [
+                    "high"
+                ],
+                "risk_score_min": 0.8,
+                "must_include_signals": [
+                    "blacklist_exact_match"
+                ],
+                "should_warn": true,
+                "hitl": true
+            },
+            "result_file": "eval/results/case-04-blacklist.json",
+            "status": "captured"
+        },
+        {
+            "id": "GD-05",
+            "manual_case": 5,
+            "title": "Trusted recipient — giảm false positive; không override blacklist",
+            "category": "trusted_recipient",
+            "input": {
+                "payee": "trusted",
+                "note": "normal",
+                "amount": 200000
+            },
+            "expected": {
+                "risk_level_in": [
+                    "safe",
+                    "low"
+                ],
+                "may_include_signals": [
+                    "trusted_recipient"
+                ],
+                "must_not_include_signals": [
+                    "blacklist_exact_match"
+                ]
+            },
+            "result_file": "eval/results/case-05-high-value-face.json",
+            "status": "captured_partial",
+            "notes": "File result hiện tên high-value-face — đối chiếu lại với manual case 5 khi re-run"
+        },
+        {
+            "id": "GD-06",
+            "manual_case": 6,
+            "title": "Behavioral amount anomaly + new payee",
+            "category": "behavioral",
+            "input": {
+                "setup": ">=3 completed tx ~500k trong 90 ngày",
+                "amount": 50000000,
+                "payee": "new"
+            },
+            "expected": {
+                "risk_level_in": [
+                    "high"
+                ],
+                "must_include_signals_any": [
+                    "behavioral_amount_anomaly",
+                    "unusual_amount"
+                ],
+                "must_include_signals": [
+                    "new_payee"
+                ],
+                "should_warn": true,
+                "hitl": true
+            },
+            "result_file": null,
+            "status": "todo"
+        },
+        {
+            "id": "GD-07",
+            "manual_case": 7,
+            "title": "Transaction velocity — 10 payee trong 5 phút",
+            "category": "velocity",
+            "input": {
+                "setup": "9 completed tx tới 9 payee khác trong 5 phút, rồi tx thứ 10 payee mới"
+            },
+            "expected": {
+                "risk_level_in": [
+                    "high"
+                ],
+                "must_include_signals": [
+                    "transaction_velocity"
+                ],
+                "no_instant_transfer": true,
+                "hitl": true
+            },
+            "result_file": null,
+            "status": "todo"
+        },
+        {
+            "id": "GD-08",
+            "manual_case": 8,
+            "title": "Scam keyword OTP / công an",
+            "category": "scam_keyword",
+            "input": {
+                "note": "công an yêu cầu mã OTP để hoàn tiền",
+                "amount": 1000000,
+                "payee": "new"
+            },
+            "expected": {
+                "risk_level_in": [
+                    "medium",
+                    "high"
+                ],
+                "must_include_signals_any": [
+                    "scam_keyword",
+                    "suspicious_note",
+                    "scam_pattern_match"
+                ],
+                "should_warn": true
+            },
+            "result_file": null,
+            "status": "todo"
+        },
+        {
+            "id": "GD-09",
+            "manual_case": 9,
+            "title": "Login location — new device + impossible travel",
+            "category": "login_risk",
+            "input": {
+                "flow": "login HN confirmed → logout → within 15m login with Cambodia geo + new device_id"
+            },
+            "expected": {
+                "force_location_setup": true,
+                "audit_signals_any": [
+                    "new_device",
+                    "impossible_travel"
+                ],
+                "no_pii_raw_storage": [
+                    "device_id",
+                    "ip",
+                    "exact_geo"
+                ]
+            },
+            "result_file": null,
+            "status": "todo"
+        },
+        {
+            "id": "GD-10",
+            "manual_case": null,
+            "title": "URL blacklist hostname block",
+            "category": "url_safety",
+            "input": {
+                "url": "https://lntbitbank.com/path"
+            },
+            "expected": {
+                "blocked": true,
+                "no_open_button": true
+            },
+            "result_file": "eval/results/url-blacklist-lntbitbank.json",
+            "status": "captured"
+        }
+    ]
+}

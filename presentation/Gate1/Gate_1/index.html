@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoMo - Ví Điện Tử MoMo | Clone Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        momo: {
+                            primary: '#A50064',
+                            dark: '#111827',
+                            light: '#F8F9FA',
+                            pink: '#E91E8C',
+                            purple: '#7B1FA2'
+                        }
+                    },
+                    borderRadius: {
+                        '3xl': '1.5rem',
+                        '4xl': '2rem'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+
+        .mega-dropdown {
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.25s ease;
+        }
+
+        .group:hover .mega-dropdown,
+        .mega-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .service-disabled {
+            opacity: 0.6;
+            cursor: not-allowed !important;
+        }
+
+        .service-disabled:hover {
+            opacity: 0.5;
+        }
+
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, #A50064 0%, #E91E8C 50%, #7B1FA2 100%);
+        }
+
+        .hero-gradient {
+            background: linear-gradient(135deg, #A50064 0%, #C2185B 40%, #7B1FA2 100%);
+        }
+
+        input:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(165, 0, 100, 0.2);
+        }
+
+        .dot-active {
+            background-color: #3B82F6;
+        }
+
+        .dot-inactive {
+            background-color: #D1D5DB;
+        }
+    </style>
+</head>
+
+<body class="bg-momo-light font-sans text-gray-800 antialiased">
+    <!-- Navbar -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <div class="w-10 h-10 rounded-full bg-momo-primary flex items-center justify-center">
+                        <span class="text-white font-bold text-lg tracking-tighter">Mo</span>
+                    </div>
+                    <span class="text-2xl font-bold text-momo-primary tracking-tight">MoMo</span>
+                </div>
+
+                <!-- Desktop Menu -->
+                <div class="hidden lg:flex items-center space-x-1">
+                    <!-- Dịch vụ with Mega Dropdown -->
+                    <div class="relative group">
+                        <button
+                            class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-momo-primary flex items-center gap-1 rounded-lg hover:bg-pink-50 transition">
+                            Dịch vụ
+                            <i class="fas fa-chevron-down text-xs"></i>
+                        </button>
+                        <!-- Mega Dropdown -->
+                        <div
+                            class="mega-dropdown absolute left-1/2 -translate-x-1/2 mt-2 w-[720px] bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 z-50">
+                            <div class="grid grid-cols-3 gap-4">
+                                <!-- Column 1 -->
+                                <div class="space-y-1">
+                                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">
+                                        Chuyển tiền & Thanh toán</p>
+                                    <button onclick="openTransferModal()"
+                                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-pink-50 text-left transition group/item">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-momo-primary/10 flex items-center justify-center text-momo-primary">
+                                            <i class="fas fa-exchange-alt"></i>
+                                        </div>
+                                        <div>
+                                            <p
+                                                class="text-sm font-semibold text-gray-800 group-hover/item:text-momo-primary">
+                                                Chuyển - Nhận tiền</p>
+                                            <p class="text-xs text-gray-500">Chuyển tiền nhanh chóng</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-file-invoice-dollar"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Thanh toán hóa đơn</p>
+                                            <p class="text-xs text-gray-400">Điện, nước, internet...</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-mobile-alt"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Viễn thông</p>
+                                            <p class="text-xs text-gray-400">Nạp tiền, data 4G/5G</p>
+                                        </div>
+                                    </button>
+                                </div>
+                                <!-- Column 2 -->
+                                <div class="space-y-1">
+                                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">
+                                        Tài chính</p>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-hand-holding-usd"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Vay nhanh</p>
+                                            <p class="text-xs text-gray-400">Vay tiền nhanh chóng</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-shield-alt"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Tài chính / Bảo hiểm</p>
+                                            <p class="text-xs text-gray-400">Bảo hiểm, đầu tư</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-credit-card"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Ví Trả Sau</p>
+                                            <p class="text-xs text-gray-400">Mua trước trả sau</p>
+                                        </div>
+                                    </button>
+                                </div>
+                                <!-- Column 3 -->
+                                <div class="space-y-1">
+                                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">
+                                        Giải trí & Khác</p>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-ticket-alt"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Vé xem phim</p>
+                                            <p class="text-xs text-gray-400">CGV, Lotte, Galaxy...</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-plane"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Du lịch</p>
+                                            <p class="text-xs text-gray-400">Vé máy bay, khách sạn</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="showDisabledAlert()"
+                                        class="service-disabled w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left">
+                                        <div
+                                            class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-chart-line"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-600">Chứng khoán</p>
+                                            <p class="text-xs text-gray-400">Đầu tư chứng khoán</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <a href="#" onclick="showDisabledAlert(); return false;"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-momo-primary rounded-lg hover:bg-pink-50 transition">Về
+                        MoMo</a>
+                    <a href="#" onclick="showDisabledAlert(); return false;"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-momo-primary rounded-lg hover:bg-pink-50 transition">Tin
+                        tức</a>
+                    <a href="#" onclick="showDisabledAlert(); return false;"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-momo-primary rounded-lg hover:bg-pink-50 transition">Trợ
+                        giúp</a>
+                    <a href="#" onclick="showDisabledAlert(); return false;"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-momo-primary rounded-lg hover:bg-pink-50 transition">Đối
+                        tác</a>
+                    <a href="#" onclick="showDisabledAlert(); return false;"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-momo-primary rounded-lg hover:bg-pink-50 transition">Blog
+                        MoMo</a>
+                </div>
+
+                <!-- Search + Mobile menu button -->
+                <div class="flex items-center gap-3">
+                    <div class="hidden md:flex items-center relative">
+                        <input type="text" placeholder="Bạn tìm gì..."
+                            class="w-48 lg:w-56 pl-10 pr-4 py-2 text-sm bg-gray-100 border-0 rounded-full focus:ring-2 focus:ring-momo-primary/30 transition">
+                        <i class="fas fa-search absolute left-3.5 text-gray-400 text-sm"></i>
+                    </div>
+                    <button id="mobileMenuBtn" class="lg:hidden p-2 rounded-lg hover:bg-gray-100">
+                        <i class="fas fa-bars text-gray-700 text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu -->
+        <div id="mobileMenu" class="hidden lg:hidden bg-white border-t border-gray-100 px-4 py-4 space-y-2">
+            <button onclick="openTransferModal(); document.getElementById('mobileMenu').classList.add('hidden')"
+                class="w-full text-left px-4 py-3 rounded-xl bg-momo-primary/10 text-momo-primary font-semibold">
+                <i class="fas fa-exchange-alt mr-2"></i> Chuyển - Nhận tiền
+            </button>
+            <a href="#" onclick="showDisabledAlert(); return false;" class="block px-4 py-2 text-gray-600">Về MoMo</a>
+            <a href="#" onclick="showDisabledAlert(); return false;" class="block px-4 py-2 text-gray-600">Tin tức</a>
+            <a href="#" onclick="showDisabledAlert(); return false;" class="block px-4 py-2 text-gray-600">Trợ giúp</a>
+            <a href="#" onclick="showDisabledAlert(); return false;" class="block px-4 py-2 text-gray-600">Đối tác</a>
+            <a href="#" onclick="showDisabledAlert(); return false;" class="block px-4 py-2 text-gray-600">Blog MoMo</a>
+            <div class="pt-2">
+                <input type="text" placeholder="Bạn tìm gì..."
+                    class="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-100 rounded-full">
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
+        <div class="hero-gradient rounded-3xl p-6 md:p-10 relative overflow-hidden shadow-xl">
+            <!-- Decorative circles -->
+            <div class="absolute -top-20 -right-20 w-64 h-64 bg-white/10 rounded-full"></div>
+            <div class="absolute -bottom-16 -left-16 w-48 h-48 bg-white/10 rounded-full"></div>
+
+            <div class="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+                <!-- Left content -->
+                <div class="text-white max-w-xl">
+                    <h1 class="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-4">
+                        Ví điện tử MoMo<br>
+                        <span class="text-pink-200">Trợ thủ tài chính của bạn</span>
+                    </h1>
+                    <p class="text-pink-100 text-base md:text-lg mb-6 opacity-90">
+                        Chuyển tiền, thanh toán hóa đơn, mua sắm và nhiều hơn nữa — tất cả trong một ứng dụng.
+                    </p>
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="openTransferModal()"
+                            class="bg-white text-momo-primary font-semibold px-6 py-3 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition flex items-center gap-2">
+                            <i class="fas fa-paper-plane"></i>
+                            Chuyển tiền ngay
+                        </button>
+                        <button onclick="showDisabledAlert()"
+                            class="service-disabled bg-white/20 text-white font-medium px-6 py-3 rounded-full border border-white/30">
+                            Tải ứng dụng
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Balance Widget -->
+                <div class="w-full max-w-sm">
+                    <div class="bg-white/15 backdrop-blur-md rounded-3xl p-6 border border-white/20 shadow-2xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                                    <i class="fas fa-wallet text-white text-sm"></i>
+                                </div>
+                                <span class="text-white/90 text-sm font-medium">Số dư Ví Demo</span>
+                            </div>
+                            <button id="toggleBalance" class="text-white/70 hover:text-white transition"
+                                title="Ẩn/Hiện số dư">
+                                <i class="fas fa-eye" id="eyeIcon"></i>
+                            </button>
+                        </div>
+                        <p class="text-white text-3xl md:text-4xl font-bold tracking-tight mb-1" id="balanceDisplay">
+                            5.000.000 <span class="text-lg font-medium">đ</span>
+                        </p>
+                        <p class="text-white/60 text-xs mb-5">Số dư khả dụng</p>
+                        <button onclick="openTransferModal()"
+                            class="w-full bg-white text-momo-primary font-semibold py-3 rounded-2xl hover:bg-pink-50 transition flex items-center justify-center gap-2 shadow-md">
+                            <i class="fas fa-exchange-alt"></i>
+                            Chuyển tiền
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Services Grid -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <h2 class="text-xl font-bold text-gray-800 mb-5">Dịch vụ nổi bật</h2>
+        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
+            <!-- Active: Chuyển tiền -->
+            <button onclick="openTransferModal()"
+                class="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-pink-50 transition group">
+                <div
+                    class="w-14 h-14 rounded-2xl bg-momo-primary flex items-center justify-center text-white shadow-md group-hover:scale-110 transition">
+                    <i class="fas fa-exchange-alt text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-700 text-center">Chuyển tiền</span>
+            </button>
+            <!-- Disabled services -->
+            <button onclick="showDisabledAlert()"
+                class="service-disabled flex flex-col items-center gap-2 p-3 rounded-2xl">
+                <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fas fa-file-invoice-dollar text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-500 text-center">Hóa đơn</span>
+            </button>
+            <button onclick="showDisabledAlert()"
+                class="service-disabled flex flex-col items-center gap-2 p-3 rounded-2xl">
+                <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fas fa-mobile-alt text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-500 text-center">Nạp tiền ĐT</span>
+            </button>
+            <button onclick="showDisabledAlert()"
+                class="service-disabled flex flex-col items-center gap-2 p-3 rounded-2xl">
+                <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fas fa-hand-holding-usd text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-500 text-center">Vay nhanh</span>
+            </button>
+            <button onclick="showDisabledAlert()"
+                class="service-disabled flex flex-col items-center gap-2 p-3 rounded-2xl">
+                <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fas fa-credit-card text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-500 text-center">Ví Trả Sau</span>
+            </button>
+            <button onclick="showDisabledAlert()"
+                class="service-disabled flex flex-col items-center gap-2 p-3 rounded-2xl">
+                <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fas fa-ticket-alt text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-500 text-center">Vé xem phim</span>
+            </button>
+            <button onclick="showDisabledAlert()"
+                class="service-disabled flex flex-col items-center gap-2 p-3 rounded-2xl">
+                <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fas fa-plane text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-500 text-center">Du lịch</span>
+            </button>
+            <button onclick="showDisabledAlert()"
+                class="service-disabled flex flex-col items-center gap-2 p-3 rounded-2xl">
+                <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fas fa-chart-line text-xl"></i>
+                </div>
+                <span class="text-xs font-medium text-gray-500 text-center">Chứng khoán</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- Promo / News section (decorative) -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h2 class="text-xl font-bold text-gray-800 mb-5">Ưu đãi nổi bật</h2>
+        <div class="grid md:grid-cols-3 gap-5">
+            <div
+                class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-not-allowed opacity-80">
+                <div class="h-36 bg-gradient-to-r from-momo-primary to-pink-500 flex items-center justify-center">
+                    <i class="fas fa-gift text-white text-4xl"></i>
+                </div>
+                <div class="p-4">
+                    <p class="text-xs text-momo-primary font-semibold mb-1">Khuyến mãi</p>
+                    <h3 class="font-semibold text-gray-800 mb-1">Nhập CHAOMOMO nhận 500K</h3>
+                    <p class="text-sm text-gray-500">Quà dành cho người dùng mới</p>
+                </div>
+            </div>
+            <div
+                class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-not-allowed opacity-80">
+                <div class="h-36 bg-gradient-to-r from-purple-600 to-indigo-500 flex items-center justify-center">
+                    <i class="fas fa-percentage text-white text-4xl"></i>
+                </div>
+                <div class="p-4">
+                    <p class="text-xs text-purple-600 font-semibold mb-1">Hoàn tiền</p>
+                    <h3 class="font-semibold text-gray-800 mb-1">Ví Trả Sau hoàn 10%</h3>
+                    <p class="text-sm text-gray-500">Tối đa 50K/chương trình</p>
+                </div>
+            </div>
+            <div
+                class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-not-allowed opacity-80">
+                <div class="h-36 bg-gradient-to-r from-blue-500 to-cyan-400 flex items-center justify-center">
+                    <i class="fas fa-cloud text-white text-4xl"></i>
+                </div>
+                <div class="p-4">
+                    <p class="text-xs text-blue-600 font-semibold mb-1">Ưu đãi</p>
+                    <h3 class="font-semibold text-gray-800 mb-1">Miễn phí iCloud+ 50GB</h3>
+                    <p class="text-sm text-gray-500">3 tháng khi thanh toán MoMo</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-full bg-momo-primary flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">Mo</span>
+                    </div>
+                    <span class="text-xl font-bold text-momo-primary">MoMo</span>
+                </div>
+                <p class="text-sm text-gray-500 text-center">© 2026 MoMo Clone Demo — Chỉ dùng cho mục đích minh họa
+                    giao diện.</p>
+                <div class="flex gap-4 text-gray-400">
+                    <a href="#" onclick="showDisabledAlert(); return false;" class="hover:text-momo-primary"><i
+                            class="fab fa-facebook text-xl"></i></a>
+                    <a href="#" onclick="showDisabledAlert(); return false;" class="hover:text-momo-primary"><i
+                            class="fab fa-youtube text-xl"></i></a>
+                    <a href="#" onclick="showDisabledAlert(); return false;" class="hover:text-momo-primary"><i
+                            class="fab fa-tiktok text-xl"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ==================== TRANSFER MODAL ==================== -->
+    <div id="transferModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 modal-overlay">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+            <!-- STEP 1: Form Chuyển tiền -->
+            <div id="step1" class="p-6">
+                <!-- Header -->
+                <div class="flex items-center gap-3 mb-6">
+                    <button onclick="closeTransferModal()"
+                        class="w-9 h-9 rounded-full hover:bg-pink-50 flex items-center justify-center text-momo-primary transition">
+                        <i class="fas fa-arrow-left text-sm"></i>
+                    </button>
+                    <h2 class="text-lg font-bold text-gray-900">Chuyển tiền</h2>
+                </div>
+
+                <!-- Form fields -->
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1.5">Người nhận</label>
+                        <input type="text" id="recipient" value="Nguyễn Văn A · 0912xxxxxx"
+                            class="w-full px-4 py-3 bg-pink-50/60 border border-pink-100 rounded-2xl text-gray-800 text-sm focus:border-momo-primary focus:bg-white transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1.5">Số tiền</label>
+                        <div class="relative">
+                            <input type="text" id="amount" value="5.000.000"
+                                class="w-full px-4 py-3.5 bg-pink-50/60 border border-pink-100 rounded-2xl text-gray-900 text-xl font-bold focus:border-momo-primary focus:bg-white transition pr-10"
+                                oninput="formatAmountInput(this)">
+                            <span
+                                class="absolute right-4 top-1/2 -translate-y-1/2 text-momo-primary font-semibold text-base">đ</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1.5">Nội dung chuyển khoản</label>
+                        <input type="text" id="content" value="Chuyển phí giữ hộ, giữ bí mật"
+                            class="w-full px-4 py-3 bg-pink-50/60 border border-pink-100 rounded-2xl text-gray-800 text-sm focus:border-momo-primary focus:bg-white transition">
+                    </div>
+                </div>
+
+                <p class="text-[11px] text-gray-400 mt-4 flex items-start gap-1.5 leading-relaxed">
+                    <i class="fas fa-info-circle mt-0.5 text-momo-primary/70"></i>
+                    <span>Người nhận mới, số tiền lớn hơn bình thường một chút.</span>
+                </p>
+
+                <!-- Primary Continue button - MoMo pink -->
+                <button onclick="goToStep2()"
+                    class="w-full mt-6 bg-momo-primary text-white font-semibold py-3.5 rounded-2xl hover:bg-[#8B0054] transition shadow-md shadow-pink-200/50 text-[15px]">
+                    Tiếp tục
+                </button>
+
+                <!-- Pagination dots -->
+                <div class="flex justify-center gap-2 mt-5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-momo-primary"></span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+                </div>
+            </div>
+
+            <!-- STEP 2: Cảnh báo rủi ro -->
+            <div id="step2" class="p-6 hidden">
+                <!-- Header -->
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-500">
+                        <i class="fas fa-exclamation text-sm"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-gray-900">Cảnh báo nhẹ</h2>
+                </div>
+
+                <!-- Risk badge -->
+                <div
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium mb-4">
+                    <span>⚠️</span>
+                    <span>Rủi ro trung bình</span>
+                </div>
+
+                <!-- Warning box -->
+                <div class="bg-gray-50 rounded-2xl p-4 mb-5">
+                    <p class="text-sm text-gray-600 leading-relaxed">
+                        Đây là lần đầu bạn chuyển tiền cho người nhận này. Hãy kiểm tra lại thông tin trước khi tiếp
+                        tục.
+                    </p>
+                </div>
+
+                <!-- Summary -->
+                <div class="bg-pink-50 rounded-2xl p-4 mb-6 space-y-2.5">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 text-xs">Người nhận</span>
+                        <span class="font-medium text-gray-800 text-sm" id="summaryRecipient">Nguyễn Văn A</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 text-xs">Số tiền</span>
+                        <span class="font-bold text-momo-primary text-sm" id="summaryAmount">5.000.000 đ</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 text-xs">Nội dung</span>
+                        <span class="font-medium text-gray-800 text-sm text-right max-w-[60%] truncate"
+                            id="summaryContent">Chuyển phí giữ hộ...</span>
+                    </div>
+                </div>
+
+                <!-- Action buttons grid -->
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="goToStep1()"
+                        class="py-3.5 rounded-2xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition text-[15px]">
+                        Hủy
+                    </button>
+                    <button onclick="confirmTransfer()"
+                        class="py-3.5 rounded-2xl bg-momo-primary text-white font-semibold hover:bg-[#8B0054] transition shadow-md shadow-pink-200/50 text-[15px]">
+                        Xác nhận chuyển
+                    </button>
+                </div>
+
+                <!-- Pagination dots -->
+                <div class="flex justify-center gap-2 mt-5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-momo-primary"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== State ==========
+        let currentBalance = 5000000;
+        let balanceVisible = true;
+
+        // ========== Helpers ==========
+        function formatCurrency(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        }
+
+        function parseAmount(str) {
+            return parseInt(str.replace(/\./g, ''), 10) || 0;
+        }
+
+        function formatAmountInput(input) {
+            let value = input.value.replace(/[^\d]/g, '');
+            if (value) {
+                input.value = formatCurrency(parseInt(value, 10));
+            }
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('balanceDisplay');
+            if (balanceVisible) {
+                el.innerHTML = formatCurrency(currentBalance) + ' <span class="text-lg font-medium">đ</span>';
+            } else {
+                el.innerHTML = '•••••••• <span class="text-lg font-medium">đ</span>';
+            }
+        }
+
+        // ========== Disabled features ==========
+        function showDisabledAlert() {
+            alert('Tính năng này hiện tại chỉ dùng làm giao diện minh họa.');
+        }
+
+        // ========== Balance toggle ==========
+        document.getElementById('toggleBalance').addEventListener('click', function () {
+            balanceVisible = !balanceVisible;
+            const icon = document.getElementById('eyeIcon');
+            icon.className = balanceVisible ? 'fas fa-eye' : 'fas fa-eye-slash';
+            updateBalanceDisplay();
+        });
+
+        // ========== Mobile menu ==========
+        document.getElementById('mobileMenuBtn').addEventListener('click', function () {
+            const menu = document.getElementById('mobileMenu');
+            menu.classList.toggle('hidden');
+        });
+
+        // ========== Modal control ==========
+        function openTransferModal() {
+            document.getElementById('transferModal').classList.remove('hidden');
+            document.getElementById('transferModal').classList.add('flex');
+            document.body.style.overflow = 'hidden';
+            goToStep1();
+            // Reset form defaults
+            document.getElementById('recipient').value = 'Nguyễn Văn A · 0912xxxxxx';
+            document.getElementById('amount').value = '5.000.000';
+            document.getElementById('content').value = 'Chuyển phí giữ hộ, giữ bí mật';
+        }
+
+        function closeTransferModal() {
+            document.getElementById('transferModal').classList.add('hidden');
+            document.getElementById('transferModal').classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        function goToStep1() {
+            document.getElementById('step1').classList.remove('hidden');
+            document.getElementById('step2').classList.add('hidden');
+        }
+
+        function goToStep2() {
+            const amount = parseAmount(document.getElementById('amount').value);
+            if (amount <= 0) {
+                alert('Vui lòng nhập số tiền hợp lệ.');
+                return;
+            }
+            if (amount > currentBalance) {
+                alert('Số dư không đủ để thực hiện giao dịch.');
+                return;
+            }
+
+            // Update summary
+            const recipient = document.getElementById('recipient').value;
+            document.getElementById('summaryRecipient').textContent = recipient.split('·')[0].trim();
+            document.getElementById('summaryAmount').textContent = formatCurrency(amount) + ' đ';
+            document.getElementById('summaryContent').textContent = document.getElementById('content').value;
+
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+        }
+
+        function confirmTransfer() {
+            const amount = parseAmount(document.getElementById('amount').value);
+            if (amount > currentBalance) {
+                alert('Số dư không đủ để thực hiện giao dịch.');
+                return;
+            }
+
+            currentBalance -= amount;
+            updateBalanceDisplay();
+
+            alert('Chuyển tiền thành công!\n\nĐã chuyển ' + formatCurrency(amount) + ' đ đến ' + document.getElementById('recipient').value.split('·')[0].trim() + '.');
+
+            // Reset & close
+            document.getElementById('recipient').value = 'Nguyễn Văn A · 0912xxxxxx';
+            document.getElementById('amount').value = '5.000.000';
+            document.getElementById('content').value = 'Chuyển phí giữ hộ, giữ bí mật';
+            closeTransferModal();
+        }
+
+        // Close modal on overlay click
+        document.getElementById('transferModal').addEventListener('click', function (e) {
+            if (e.target === this) {
+                closeTransferModal();
+            }
+        });
+
+        // Escape key closes modal
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeTransferModal();
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,71 @@
+{
+  "case_id": "case-04-blacklist",
+  "captured_at": "2026-08-15T11:17:30.243876+00:00",
+  "http_status": 201,
+  "latency_ms": 10825,
+  "risk_level": "high",
+  "risk_score": 1.0,
+  "signals": [
+    {
+      "signal_type": "blacklist_exact_match",
+      "severity": "high",
+      "score": 0.93,
+      "explanation": "Tài khoản ***0604 khớp chính xác với dữ liệu cần thận trọng của nguồn đối chiếu.",
+      "evidence": {
+        "match": "account_and_bank",
+        "source": "excel_scam_report"
+      }
+    },
+    {
+      "signal_type": "new_payee",
+      "severity": "low",
+      "score": 0.2,
+      "explanation": "Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+      "evidence": {}
+    }
+  ],
+  "requires_face_verification": true,
+  "llm_used": null,
+  "llm_used_note": "Not exposed by the assess response; verify in backend logs if required.",
+  "decision": "require_user_decision",
+  "response": {
+    "transaction_id": "82770dec-49c9-4c82-ad5c-c372460139d5",
+    "assessment_id": "f2c466cf-7c57-40dc-bd3c-308ce7677626",
+    "risk_score": 1.0,
+    "risk_level": "high",
+    "signals": [
+      {
+        "signal_type": "blacklist_exact_match",
+        "severity": "high",
+        "score": 0.93,
+        "explanation": "Tài khoản ***0604 khớp chính xác với dữ liệu cần thận trọng của nguồn đối chiếu.",
+        "evidence": {
+          "match": "account_and_bank",
+          "source": "excel_scam_report"
+        }
+      },
+      {
+        "signal_type": "new_payee",
+        "severity": "low",
+        "score": 0.2,
+        "explanation": "Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+        "evidence": {}
+      }
+    ],
+    "explanation": "Các dấu hiệu được hệ thống đối chiếu:\n- Tài khoản ***0604 khớp chính xác với dữ liệu cần thận trọng của nguồn đối chiếu.\n- Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+    "recommendation": "Khuyến nghị tạm dừng và xác minh người nhận qua một kênh liên lạc độc lập.",
+    "should_warn": true,
+    "requires_face_verification": true,
+    "warning": {
+      "id": "f16018ea-fb5c-404a-a996-be726c5b20e2",
+      "warning_level": "high",
+      "title": "Cảnh báo rủi ro cao",
+      "message": "Khuyến nghị tạm dừng và xác minh người nhận qua một kênh liên lạc độc lập.",
+      "transparency_reason": "Các dấu hiệu được hệ thống đối chiếu:\n- Tài khoản ***0604 khớp chính xác với dữ liệu cần thận trọng của nguồn đối chiếu.\n- Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+      "displayed_at": "2026-08-15T11:17:24.781823Z",
+      "countdown_seconds": 30
+    },
+    "requires_user_decision": true,
+    "intervention": null
+  }
+}

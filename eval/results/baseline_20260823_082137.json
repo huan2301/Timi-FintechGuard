@@ -1,0 +1,162 @@
+{
+  "phase": "0",
+  "timestamp_utc": "20260823_082137",
+  "prompt_version": "v0.6-calibrated-evidence-rubric",
+  "evaluation_mode": "model",
+  "dataset": "guardian_cases_v0.json",
+  "metrics": {
+    "total_cases": 5,
+    "schema_ok_count": 5,
+    "schema_ok_rate": 1.0,
+    "availability_rate": 1.0,
+    "action_accuracy": 0.8,
+    "level_accuracy": 0.8,
+    "score_in_range_rate": 0.6,
+    "signal_ok_rate": 1.0,
+    "overall_pass_rate": 0.8,
+    "avg_latency_ms": 1292.0,
+    "resolved_action_accuracy": 0.8,
+    "by_action": {
+      "MONITOR": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "support": 1
+      },
+      "STOP": {
+        "tp": 2,
+        "fp": 1,
+        "fn": 0,
+        "support": 2
+      },
+      "PAUSE": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 1,
+        "support": 2
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "monitor_002",
+      "category": "monitor",
+      "description": "Urgency nhẹ nhưng chưa có đe dọa khóa tài khoản",
+      "latency_ms": 2317.6,
+      "schema_ok": true,
+      "error": null,
+      "error_metadata": null,
+      "attempts": 1,
+      "predicted_action": "MONITOR",
+      "predicted_level": "warning",
+      "predicted_score": 30,
+      "predicted_signals": [],
+      "expected_action": "MONITOR",
+      "expected_level": "warning",
+      "action_match": true,
+      "level_match": true,
+      "score_in_range": true,
+      "signal_ok": true,
+      "overall_pass": true
+    },
+    {
+      "id": "stop_004",
+      "category": "stop",
+      "description": "Remote access + OTP",
+      "latency_ms": 860.9,
+      "schema_ok": true,
+      "error": null,
+      "error_metadata": null,
+      "attempts": 1,
+      "predicted_action": "STOP",
+      "predicted_level": "critical",
+      "predicted_score": 90,
+      "predicted_signals": [
+        "remote_access_request",
+        "otp_request",
+        "credential_social_engineering"
+      ],
+      "expected_action": "STOP",
+      "expected_level": "critical",
+      "action_match": true,
+      "level_match": true,
+      "score_in_range": true,
+      "signal_ok": true,
+      "overall_pass": true
+    },
+    {
+      "id": "edge_003",
+      "category": "edge",
+      "description": "Yêu cầu mã OTP nhưng ngữ cảnh mơ hồ",
+      "latency_ms": 819.5,
+      "schema_ok": true,
+      "error": null,
+      "error_metadata": null,
+      "attempts": 1,
+      "predicted_action": "PAUSE",
+      "predicted_level": "high",
+      "predicted_score": 45,
+      "predicted_signals": [
+        "otp_request"
+      ],
+      "expected_action": "PAUSE",
+      "expected_level": "high",
+      "action_match": true,
+      "level_match": true,
+      "score_in_range": false,
+      "signal_ok": true,
+      "overall_pass": true
+    },
+    {
+      "id": "pause_004",
+      "category": "pause",
+      "description": "Urgency + bank impersonation",
+      "latency_ms": 1104.5,
+      "schema_ok": true,
+      "error": null,
+      "error_metadata": null,
+      "attempts": 1,
+      "predicted_action": "STOP",
+      "predicted_level": "critical",
+      "predicted_score": 90,
+      "predicted_signals": [
+        "bank_impersonation",
+        "urgency",
+        "account_lock_threat"
+      ],
+      "expected_action": "PAUSE",
+      "expected_level": "high",
+      "action_match": false,
+      "level_match": false,
+      "score_in_range": false,
+      "signal_ok": true,
+      "overall_pass": false
+    },
+    {
+      "id": "stop_010",
+      "category": "stop",
+      "description": "Legal threat + secrecy + urgency",
+      "latency_ms": 1357.7,
+      "schema_ok": true,
+      "error": null,
+      "error_metadata": null,
+      "attempts": 1,
+      "predicted_action": "STOP",
+      "predicted_level": "critical",
+      "predicted_score": 80,
+      "predicted_signals": [
+        "authority_claim",
+        "legal_threat",
+        "secrecy_request",
+        "urgency"
+      ],
+      "expected_action": "STOP",
+      "expected_level": "critical",
+      "action_match": true,
+      "level_match": true,
+      "score_in_range": true,
+      "signal_ok": true,
+      "overall_pass": true
+    }
+  ]
+}

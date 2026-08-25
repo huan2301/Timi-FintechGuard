@@ -1,0 +1,87 @@
+{
+  "case_id": "case-03-scam-note",
+  "captured_at": "2026-08-15T11:17:04.043770+00:00",
+  "http_status": 201,
+  "latency_ms": 11732,
+  "risk_level": "high",
+  "risk_score": 0.85,
+  "signals": [
+    {
+      "signal_type": "new_payee",
+      "severity": "low",
+      "score": 0.2,
+      "explanation": "Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+      "evidence": {}
+    },
+    {
+      "signal_type": "suspicious_note",
+      "severity": "medium",
+      "score": 0.25,
+      "explanation": "Nội dung có từ khóa thường được dùng để tạo áp lực chuyển tiền gấp.",
+      "evidence": {
+        "matched_keyword_count": 1
+      }
+    },
+    {
+      "signal_type": "scam_pattern_match",
+      "severity": "high",
+      "score": 0.4,
+      "explanation": "Nội dung khớp với mẫu lừa đảo: Eval urgent tax request.",
+      "evidence": {
+        "pattern_name": "Eval urgent tax request"
+      }
+    }
+  ],
+  "requires_face_verification": false,
+  "llm_used": null,
+  "llm_used_note": "Not exposed by the assess response; verify in backend logs if required.",
+  "decision": "require_user_decision",
+  "response": {
+    "transaction_id": "4a2dde5b-d455-47b9-b0fd-a2e13b7a7b66",
+    "assessment_id": "1e29eae8-9332-42a9-ac57-0e74c5342746",
+    "risk_score": 0.85,
+    "risk_level": "high",
+    "signals": [
+      {
+        "signal_type": "new_payee",
+        "severity": "low",
+        "score": 0.2,
+        "explanation": "Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+        "evidence": {}
+      },
+      {
+        "signal_type": "suspicious_note",
+        "severity": "medium",
+        "score": 0.25,
+        "explanation": "Nội dung có từ khóa thường được dùng để tạo áp lực chuyển tiền gấp.",
+        "evidence": {
+          "matched_keyword_count": 1
+        }
+      },
+      {
+        "signal_type": "scam_pattern_match",
+        "severity": "high",
+        "score": 0.4,
+        "explanation": "Nội dung khớp với mẫu lừa đảo: Eval urgent tax request.",
+        "evidence": {
+          "pattern_name": "Eval urgent tax request"
+        }
+      }
+    ],
+    "explanation": "Các dấu hiệu được hệ thống đối chiếu:\n- Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.\n- Nội dung có từ khóa thường được dùng để tạo áp lực chuyển tiền gấp.\n- Nội dung khớp với mẫu lừa đảo: Eval urgent tax request.",
+    "recommendation": "Khuyến nghị tạm dừng và xác minh người nhận qua một kênh liên lạc độc lập.",
+    "should_warn": true,
+    "requires_face_verification": false,
+    "warning": {
+      "id": "f67154c5-f279-4d2b-933a-807b0532b091",
+      "warning_level": "high",
+      "title": "Cảnh báo rủi ro cao",
+      "message": "Khuyến nghị tạm dừng và xác minh người nhận qua một kênh liên lạc độc lập.",
+      "transparency_reason": "Các dấu hiệu được hệ thống đối chiếu:\n- Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.\n- Nội dung có từ khóa thường được dùng để tạo áp lực chuyển tiền gấp.\n- Nội dung khớp với mẫu lừa đảo: Eval urgent tax request.",
+      "displayed_at": "2026-08-15T11:16:57.693652Z",
+      "countdown_seconds": 30
+    },
+    "requires_user_decision": true,
+    "intervention": null
+  }
+}

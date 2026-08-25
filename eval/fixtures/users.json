@@ -1,0 +1,22 @@
+{
+  "default_low_volume": {
+    "description": "User ít giao dịch, amount trung bình thấp",
+    "completed_tx_90d": [
+      { "amount": 100000, "payee": "P1" },
+      { "amount": 200000, "payee": "P2" }
+    ]
+  },
+  "history_500k_x3": {
+    "description": "Manual case 6 — 3 GD ~500k trong 90 ngày",
+    "completed_tx_90d": [
+      { "amount": 500000, "payee": "A" },
+      { "amount": 480000, "payee": "B" },
+      { "amount": 520000, "payee": "C" }
+    ]
+  },
+  "velocity_9_payees_5min": {
+    "description": "Manual case 7 — 9 payee khác nhau trong 5 phút (seed cho runner)",
+    "recent_tx_window_minutes": 5,
+    "recent_distinct_payees": 9
+  }
+}
