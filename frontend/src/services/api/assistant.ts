@@ -19,6 +19,19 @@ export type AssistantTaskState = {
   last_recipient: AssistantTransferDraft | null;
 };
 
+export type AssistantRiskContext = {
+  transaction_id: string | null;
+  recipient_name: string | null;
+  recipient_account_masked: string | null;
+  bank_name: string | null;
+  amount: number | null;
+  note: string | null;
+  risk_level: "low" | "medium" | "high";
+  risk_score: number;
+  signals: string[];
+  warning_message: string | null;
+};
+
 export type AssistantUiAction =
   | {
       type: "navigate_transfer_review";
@@ -61,6 +74,11 @@ export type AssistantChatResponse = {
   action: AssistantUiAction | null;
 };
 
+export type AssistantRiskCoachResponse = {
+  answer: string;
+  questions: string[];
+};
+
 export type AssistantChatHistoryItem = {
   id: string;
   question: string;
@@ -75,6 +93,15 @@ export type AssistantChatHistoryResponse = {
 export const assistantApi = {
   chat: async (data: { message: string; task_state: AssistantTaskState }): Promise<AssistantChatResponse> => {
     const response = await axiosInstance.post<AssistantChatResponse>("/v1/assistant/chat", data);
+    return response.data;
+  },
+  riskCoach: async (data: {
+    message: string;
+    context: AssistantRiskContext;
+    history: AssistantChatTurn[];
+    guided_question?: string | null;
+  }): Promise<AssistantRiskCoachResponse> => {
+    const response = await axiosInstance.post<AssistantRiskCoachResponse>("/v1/assistant/risk-coach", data);
     return response.data;
   },
   history: async (): Promise<AssistantChatHistoryResponse> => {

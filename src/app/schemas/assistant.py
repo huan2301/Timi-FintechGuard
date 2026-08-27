@@ -37,6 +37,25 @@ class AssistantTaskState(BaseModel):
     last_recipient: AssistantTransferDraft | None = None
 
 
+class AssistantRiskContext(BaseModel):
+    """Safe, display-oriented context for the transaction risk coach.
+
+    The browser must send a masked account only. This context is used for a
+    single explanation request and is never treated as authorization to act.
+    """
+
+    transaction_id: str | None = Field(default=None, max_length=80)
+    recipient_name: str | None = Field(default=None, max_length=120)
+    recipient_account_masked: str | None = Field(default=None, max_length=24)
+    bank_name: str | None = Field(default=None, max_length=80)
+    amount: int | None = Field(default=None, ge=0, le=10_000_000_000)
+    note: str | None = Field(default=None, max_length=500)
+    risk_level: Literal["low", "medium", "high"] = "medium"
+    risk_score: float = Field(default=0, ge=0, le=1)
+    signals: list[str] = Field(default_factory=list, max_length=8)
+    warning_message: str | None = Field(default=None, max_length=500)
+
+
 class AssistantUiAction(BaseModel):
     type: Literal[
         "navigate_transfer_review",
@@ -66,6 +85,20 @@ class AssistantUiAction(BaseModel):
 class AssistantChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=800)
     task_state: AssistantTaskState = Field(default_factory=AssistantTaskState)
+
+
+class AssistantRiskCoachRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=800)
+    context: AssistantRiskContext
+    history: list[AssistantChatTurn] = Field(default_factory=list, max_length=6)
+    # The browser can only send a question returned by this endpoint. The
+    # server validates it again before it is given to the model.
+    guided_question: str | None = Field(default=None, max_length=300)
+
+
+class AssistantRiskCoachResponse(BaseModel):
+    answer: str
+    questions: list[str] = Field(default_factory=list, max_length=3)
 
 
 class AssistantChatResponse(BaseModel):

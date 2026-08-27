@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   ShieldAlert,
+  AlertTriangle,
   CheckCircle2,
   User,
   Building2,
@@ -108,6 +109,26 @@ function formatProtectionCount(value: number): string {
   return hundredPart > 0 ? `${thousands}k${hundredPart}` : `${thousands}k`;
 }
 
+function maskRecipientAccount(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  return digits.length > 4 ? `•••• ${digits.slice(-4)}` : "••••";
+}
+
+function formatVnd(value: number): string {
+  return `${new Intl.NumberFormat("vi-VN").format(Math.max(0, Math.round(value)))} đ`;
+}
+
+function getApiErrorDetail(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+  const response = (error as { response?: { data?: { detail?: unknown } } }).response;
+  return typeof response?.data?.detail === "string" ? response.data.detail : "";
+}
+
+function isInsufficientBalanceDetail(detail: string): boolean {
+  const normalized = detail.toLocaleLowerCase("vi-VN");
+  return normalized.includes("số dư không đủ") || normalized.includes("insufficient balance");
+}
+
 export default function TransferPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -115,6 +136,8 @@ export default function TransferPage() {
   const user = useAuthStore((state) => state.user);
   const fetchMe = useAuthStore((state) => state.fetchMe);
   const setAssistantActivity = useTimiAssistantStore((state) => state.setActivity);
+  const setRiskContext = useTimiAssistantStore((state) => state.setRiskContext);
+  const clearRiskContext = useTimiAssistantStore((state) => state.clearRiskContext);
   const dailySummaryQuery = useQuery({
     queryKey: ["transaction-history-summary"],
     queryFn: () => transactionsApi.getHistorySummary(),
@@ -168,6 +191,8 @@ export default function TransferPage() {
     void fetchMe();
   }, [fetchMe]);
 
+  useEffect(() => () => clearRiskContext(), [clearRiskContext]);
+
   const [step, setStep] = useState<
     "form" | "review" | "analyzing" | "ai-check" | "pin" | "face" | "success"
   >("form");
@@ -191,12 +216,22 @@ export default function TransferPage() {
   const [bankActiveIndex, setBankActiveIndex] = useState(0);
   const [selectedRecentId, setSelectedRecentId] = useState<string | null>(null);
   const [assistantReviewRequested, setAssistantReviewRequested] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [balanceCheckAttempted, setBalanceCheckAttempted] = useState(false);
   useBodyScrollLock(
     step === "face"
       || (step === "ai-check" && riskData !== null),
     "transfer-modal",
   );
   const selectedBank = banks.find((bank) => bank.code === form.bank_code);
+  const availableBalance = typeof user?.balance === "number" && Number.isFinite(user.balance)
+    ? user.balance
+    : null;
+  const requestedAmount = Number(form.amount || 0);
+  const isInsufficientBalance = availableBalance !== null && requestedAmount > availableBalance;
+  const balanceShortfall = isInsufficientBalance
+    ? requestedAmount - (availableBalance ?? 0)
+    : 0;
   const normalizedBankSearch = bankSearch.trim().toLocaleLowerCase("vi-VN");
   const filteredBanks = banks.filter((bank) =>
     `${bank.name} ${bank.code}`
@@ -242,6 +277,8 @@ export default function TransferPage() {
     setRiskData(null);
     setTxId("");
     setPin("");
+    setTransferError(null);
+    setBalanceCheckAttempted(false);
     setForm((current) => ({
       ...current,
       recipient_account: accountNumber,
@@ -297,19 +334,34 @@ export default function TransferPage() {
       queryClient.invalidateQueries({ queryKey: ["recent-contacts"] });
       void fetchMe();
       if (data.transaction_status === "completed") {
+        clearRiskContext();
+        setTransferError(null);
         setAssistantActivity({ status: "complete", message: "Giao dịch đã hoàn tất. Timi vui vì có thể đồng hành cùng bạn!" });
         setStep("success");
       }
       else if (data.transaction_status === "cancelled") {
+        clearRiskContext();
+        setTransferError(null);
         setAssistantActivity({ status: "complete", message: "Bạn đã dừng giao dịch an toàn. Khi cần, Timi luôn ở đây nhé!" });
         setStep("review");
         setRiskData(null);
       }
     },
-    onError: (err: any) =>
-      alert(
-        err.response?.data?.detail || "Không thể ghi nhận quyết định giao dịch",
-      ),
+    onError: (err: unknown) => {
+      const detail = getApiErrorDetail(err);
+      if (isInsufficientBalanceDetail(detail)) {
+        clearRiskContext();
+        setRiskData(null);
+        setTxId("");
+        setTransferError(
+          "Số dư hiện tại không đủ để hoàn tất giao dịch. Hãy giảm số tiền rồi thử lại.",
+        );
+        void fetchMe();
+        setStep("review");
+        return;
+      }
+      alert(detail || "Không thể ghi nhận quyết định giao dịch");
+    },
   });
 
   const analyzeMutation = useMutation({
@@ -327,10 +379,23 @@ export default function TransferPage() {
       setTxId(data.transaction_id);
       setRiskData(data);
       if (data.should_warn && data.warning) {
+        setRiskContext({
+          transaction_id: data.transaction_id,
+          recipient_name: form.recipient_name || null,
+          recipient_account_masked: maskRecipientAccount(form.recipient_account),
+          bank_name: selectedBank?.name ?? form.bank_code,
+          amount: Math.round(Number(form.amount)),
+          note: form.note || null,
+          risk_level: data.risk_level === "high" ? "high" : data.risk_level === "low" ? "low" : "medium",
+          risk_score: data.risk_score,
+          signals: data.signals.filter((signal) => (signal.score ?? 0) > 0).map((signal) => signal.explanation).slice(0, 8),
+          warning_message: data.warning.message,
+        });
         setAssistantActivity({ status: "warning", riskLevel: data.risk_level });
         setStep("ai-check");
         return;
       }
+      clearRiskContext();
       setAssistantActivity({ status: "complete", message: "Timi đã kiểm tra xong. Bạn có thể tiếp tục xác thực giao dịch nhé!" });
       if (data.requires_face_verification) {
         setStep("face");
@@ -338,10 +403,18 @@ export default function TransferPage() {
         setStep("pin");
       }
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      clearRiskContext();
       setAssistantActivity({ status: "idle" });
       setStep("review");
-      alert(err.response?.data?.detail || "Có lỗi xảy ra khi phân tích rủi ro");
+      const detail = getApiErrorDetail(err);
+      if (isInsufficientBalanceDetail(detail)) {
+        setTransferError(
+          "Số dư hiện tại không đủ để thực hiện giao dịch. Hãy giảm số tiền rồi thử lại.",
+        );
+        return;
+      }
+      alert(detail || "Có lỗi xảy ra khi phân tích rủi ro");
     },
   });
 
@@ -487,9 +560,20 @@ export default function TransferPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+    setTransferError(null);
+    setBalanceCheckAttempted(false);
     setStep("review");
   };
   const handleRiskCheck = () => {
+    setBalanceCheckAttempted(true);
+    if (isInsufficientBalance) {
+      setTransferError(
+        "Số dư khả dụng không đủ cho số tiền đã nhập. Hãy giảm số tiền để tiếp tục.",
+      );
+      return;
+    }
+    setTransferError(null);
+    clearRiskContext();
     setAssistantActivity({ status: "analyzing" });
     setStep("analyzing");
     analyzeMutation.mutate(form);
@@ -991,6 +1075,8 @@ export default function TransferPage() {
                       }
                       onChange={(e) => {
                         const amount = normalizeAmountInput(e.target.value);
+                        setTransferError(null);
+                        setBalanceCheckAttempted(false);
                         setForm((current) => ({ ...current, amount }));
                       }}
                     />
@@ -1004,9 +1090,13 @@ export default function TransferPage() {
                     {["50000", "100000", "200000", "500000", "1000000", "10000000"].map(
                       (amount) => (
                         <button
-                          key={amount}
-                          type="button"
-                          onClick={() => setForm({ ...form, amount })}
+                      key={amount}
+                      type="button"
+                      onClick={() => {
+                        setTransferError(null);
+                        setBalanceCheckAttempted(false);
+                        setForm({ ...form, amount });
+                      }}
                           className="px-3.5 py-1.5 bg-slate-100 hover:bg-violet-100 hover:text-violet-700 rounded-full text-xs font-semibold text-slate-600 transition-colors"
                         >
                           {new Intl.NumberFormat("vi-VN").format(parseInt(amount))}
@@ -1393,10 +1483,27 @@ export default function TransferPage() {
               )}
             </div>
 
+            {((balanceCheckAttempted && isInsufficientBalance) || transferError) && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-rose-700"
+              >
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold">Không thể tiếp tục với số tiền này</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-rose-600">
+                    {transferError || `Bạn đang thiếu ${formatVnd(balanceShortfall)} so với số dư khả dụng.`}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={handleRiskCheck}
-              disabled={analyzeMutation.isPending}
-              className="w-full mt-5 py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-bold rounded-xl shadow-lg shadow-violet-200 hover:shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              disabled={analyzeMutation.isPending || Boolean(transferError)}
+              title={transferError ? "Hãy giảm số tiền để tiếp tục" : undefined}
+              className="w-full mt-5 py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-bold rounded-xl shadow-lg shadow-violet-200 hover:shadow-xl active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {analyzeMutation.isPending ? (
                 <>
@@ -1579,6 +1686,8 @@ export default function TransferPage() {
             <button
               onClick={() => {
                 setStep("form");
+                setTransferError(null);
+                setBalanceCheckAttempted(false);
                 setForm({
                   recipient_account: "",
                   recipient_name: "",

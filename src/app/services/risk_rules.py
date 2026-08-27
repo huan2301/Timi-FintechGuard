@@ -60,6 +60,19 @@ SCAM_KEYWORDS = (
     ("tai khoan vi pham", "tài khoản vi phạm"),
 )
 
+# A transfer that refers to claiming a prize or gift is not proof of fraud on
+# its own.  It is nevertheless a useful, explainable signal: prize scams
+# commonly ask the victim to transfer a "fee" or "deposit" before a supposed
+# reward can be received.  Keep this separate from the explicit scam-keyword
+# list above so the UI and Risk Coach can explain the distinction clearly.
+REWARD_CLAIM_KEYWORDS = (
+    "nhan thuong",
+    "trung thuong",
+    "nhan qua",
+    "qua tang",
+    "nhan uu dai",
+)
+
 SUSPICIOUS_URL_MARKERS = ("http://", "https://", "www.", ".xyz", ".top", ".click")
 
 
@@ -79,10 +92,16 @@ def _mask_account(account: str) -> str:
     return f"***{compact[-4:]}" if len(compact) > 4 else "[masked]"
 
 
+def _format_vnd(value: int | float) -> str:
+    return f"{value:,.0f}".replace(",", ".")
+
+
 def _fold_text(value: str) -> str:
     """Case- and accent-insensitive text for Vietnamese keyword matching."""
     decomposed = unicodedata.normalize("NFD", value.casefold())
-    return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+    return "".join(
+        char for char in decomposed if unicodedata.category(char) != "Mn"
+    ).replace("đ", "d")
 
 
 def _utcnow() -> datetime:
@@ -115,10 +134,7 @@ def _blacklist_signal(db: Session, request: AssessRequest) -> RiskSignalCandidat
         signal_type="blacklist_exact_match",
         severity="high",
         score=score,
-        explanation=(
-            f"Tài khoản {_mask_account(account)} khớp chính xác với dữ liệu cần "
-            "thận trọng của nguồn đối chiếu."
-        ),
+        explanation=f"Tài khoản {_mask_account(account)} đã được đánh dấu cần thận trọng.",
         matched_blacklist_id=entry.id,
         evidence={"source": entry.source, "match": "account_and_bank"},
     )
@@ -158,7 +174,7 @@ def _new_payee_signal(db: Session, user_id: object, request: AssessRequest) -> R
         signal_type="new_payee",
         severity="low",
         score=0.20,
-        explanation="Đây là lần đầu bạn hoàn tất giao dịch với người nhận này.",
+        explanation="Bạn chưa từng chuyển tiền cho người nhận này.",
     )
 
 
@@ -169,10 +185,7 @@ def _amount_signal(amount: int) -> RiskSignalCandidate | None:
         signal_type="unusual_amount",
         severity="medium",
         score=0.20,
-        explanation=(
-            f"Số tiền {amount:,.0f} VND vượt ngưỡng cảnh báo "
-            f"{LARGE_AMOUNT_VND:,.0f} VND."
-        ),
+        explanation=f"Số tiền vượt ngưỡng cảnh báo ({_format_vnd(LARGE_AMOUNT_VND)} đ).",
     )
 
 
@@ -199,6 +212,7 @@ def _behavioral_amount_signal(
 
     baseline = max(1, int(median(historical_amounts)))
     multiple = request.amount / baseline
+    multiple_label = f"{multiple:,.0f}".replace(",", ".")
     if (
         request.amount < BEHAVIORAL_AMOUNT_MIN_VND
         or multiple < BEHAVIORAL_AMOUNT_MULTIPLIER
@@ -208,10 +222,7 @@ def _behavioral_amount_signal(
         signal_type="behavioral_amount_anomaly",
         severity="high",
         score=0.45,
-        explanation=(
-            "Số tiền này cao bất thường so với các giao dịch hoàn tất gần đây "
-            f"của bạn (khoảng {multiple:.0f} lần mức điển hình)."
-        ),
+        explanation=f"Số tiền cao hơn khoảng {multiple_label} lần mức thường lệ của bạn.",
         evidence={
             "baseline_sample_size": len(historical_amounts),
             "median_amount_vnd": baseline,
@@ -252,8 +263,8 @@ def _transaction_velocity_signal(
         severity="high",
         score=0.65,
         explanation=(
-            f"Có {recipient_count} người nhận khác nhau trong "
-            f"{int(VELOCITY_WINDOW.total_seconds() // 60)} phút gần đây."
+            f"Bạn đang chuyển cho {recipient_count} người nhận trong "
+            f"{int(VELOCITY_WINDOW.total_seconds() // 60)} phút."
         ),
         evidence={
             "distinct_recipient_count": recipient_count,
@@ -300,10 +311,7 @@ def collect_telemetry_signals(
                 signal_type="new_device",
                 severity="low",
                 score=0.12,
-                explanation=(
-                    "Giao dịch được thực hiện từ một thiết bị chưa thấy trong "
-                    "lịch sử gần đây của tài khoản."
-                ),
+                explanation="Thiết bị này chưa từng được dùng gần đây.",
                 evidence={"history_window_days": DEVICE_HISTORY_DAYS},
             )
         )
@@ -315,10 +323,7 @@ def collect_telemetry_signals(
                 signal_type="new_network",
                 severity="low",
                 score=0.08,
-                explanation=(
-                    "Kết nối mạng của giao dịch này chưa xuất hiện trong lịch sử "
-                    "gần đây. Đây chỉ là tín hiệu bổ sung, không phải kết luận."
-                ),
+                explanation="Mạng kết nối này chưa từng xuất hiện gần đây.",
                 evidence={"history_window_days": DEVICE_HISTORY_DAYS},
             )
         )
@@ -364,10 +369,7 @@ def collect_telemetry_signals(
             signal_type="impossible_travel",
             severity="high",
             score=0.65,
-            explanation=(
-                "Vị trí gần đúng thay đổi quá xa trong thời gian rất ngắn, "
-                "không phù hợp với di chuyển thông thường."
-            ),
+            explanation="Vị trí thay đổi bất thường trong thời gian rất ngắn.",
             evidence={
                 "distance_km": round(distance_km),
                 "elapsed_minutes": round(elapsed_seconds / 60, 1),
@@ -398,7 +400,7 @@ def _note_signals(note: str | None) -> list[RiskSignalCandidate]:
                 signal_type="suspicious_note",
                 severity="medium",
                 score=0.25,
-                explanation="Nội dung có từ khóa thường được dùng để tạo áp lực chuyển tiền gấp.",
+                explanation="Nội dung tạo cảm giác phải chuyển tiền gấp.",
                 evidence={"matched_keyword_count": len(matched)},
             )
         )
@@ -411,14 +413,27 @@ def _note_signals(note: str | None) -> list[RiskSignalCandidate]:
                 signal_type="scam_keyword",
                 severity="medium",
                 score=0.30,
-                explanation=(
-                    "Nội dung có từ khóa thường xuất hiện trong các kịch bản "
-                    "lừa đảo hoặc mạo danh."
-                ),
+                explanation="Nội dung có dấu hiệu lừa đảo hoặc mạo danh.",
                 evidence={
                     "matched_categories": matched_scam_categories,
                     "matched_keyword_count": len(matched_scam_categories),
                 },
+            )
+        )
+    matched_reward_cues = sorted(
+        {keyword for keyword in REWARD_CLAIM_KEYWORDS if keyword in lowered}
+    )
+    if matched_reward_cues:
+        signals.append(
+            RiskSignalCandidate(
+                signal_type="reward_claim_note",
+                severity="medium",
+                score=0.25,
+                explanation=(
+                    "Nội dung nhắc đến nhận thưởng hoặc quà tặng; hãy cảnh giác nếu bị "
+                    "yêu cầu chuyển phí hay đặt cọc trước."
+                ),
+                evidence={"matched_cue_count": len(matched_reward_cues)},
             )
         )
     if any(marker in lowered for marker in SUSPICIOUS_URL_MARKERS):
@@ -427,7 +442,7 @@ def _note_signals(note: str | None) -> list[RiskSignalCandidate]:
                 signal_type="suspicious_link",
                 severity="medium",
                 score=0.20,
-                explanation="Nội dung chuyển khoản có chứa đường dẫn cần được xác minh thêm.",
+                explanation="Nội dung có đường dẫn cần kiểm tra.",
             )
         )
     return signals
@@ -449,7 +464,7 @@ def _pattern_signals(db: Session, note: str | None) -> list[RiskSignalCandidate]
                 signal_type="scam_pattern_match",
                 severity="high" if score >= 0.30 else "medium",
                 score=score,
-                explanation=f"Nội dung khớp với mẫu lừa đảo: {pattern.pattern_name}.",
+                explanation="Nội dung giao dịch trùng với một mẫu lừa đảo đã được cảnh báo.",
                 matched_pattern_id=pattern.id,
                 evidence={"pattern_name": pattern.pattern_name},
             )
@@ -524,10 +539,10 @@ def build_explanation(level: str, signals: list[RiskSignalCandidate]) -> str:
     if not risk_signals:
         return "Không phát hiện dấu hiệu rủi ro đáng kể từ các rule hiện có."
 
-    lines = ["Các dấu hiệu được hệ thống đối chiếu:"]
+    lines = ["Điểm cần lưu ý:"]
     lines.extend(f"- {signal.explanation}" for signal in risk_signals)
     if safeguards:
-        lines.append("Yếu tố làm giảm cảnh báo:")
+        lines.append("Điểm an toàn:")
         lines.extend(f"- {signal.explanation}" for signal in safeguards)
     return "\n".join(lines)
 

@@ -9,6 +9,7 @@ from src.app.agents.contracts import (
     AgentCapability,
     AgentDescriptor,
     AgentId,
+    ChatIntent,
 )
 from src.app.agents.task_navigation import navigation_action_for_route, route_task
 from src.app.services.contextual_navigation_agent import understand_navigation_request
@@ -17,7 +18,12 @@ from src.app.services.scam_guardian_stt import transcribe_guardian_audio
 from src.app.services.timi_assistant import answer_timi_question
 
 if TYPE_CHECKING:
-    from src.app.schemas.assistant import AssistantChatTurn, AssistantTaskState, AssistantUiAction
+    from src.app.schemas.assistant import (
+        AssistantChatTurn,
+        AssistantRiskContext,
+        AssistantTaskState,
+        AssistantUiAction,
+    )
     from src.app.services.scam_guardian import GuardianConversationState
 
 
@@ -26,6 +32,25 @@ class ChatSupportTask:
     message: str
     history: list[AssistantChatTurn]
     knowledge_context: str = ""
+    risk_context: AssistantRiskContext | None = None
+    risk_guided_question: str | None = None
+    force_provider: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ChatSupportIntentTask:
+    """The mandatory Chat Support front-door classification task."""
+
+    message: str
+    task_state: AssistantTaskState
+    history: list[AssistantChatTurn]
+
+
+@dataclass(frozen=True, slots=True)
+class ChatSupportIntentResult:
+    intent: ChatIntent
+    task_state: AssistantTaskState
+    source: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,18 +95,36 @@ class ChatSupportAgent:
     descriptor = AgentDescriptor(
         agent_id=AgentId.CHAT_SUPPORT,
         name="Timi Chat Support Agent",
-        description="Trả lời hướng dẫn sản phẩm trong phạm vi Timi.",
-        capabilities=(AgentCapability.PRODUCT_CHAT,),
+        description="Cổng vào phân loại ý định và trả lời hướng dẫn sản phẩm trong phạm vi Timi.",
+        capabilities=(AgentCapability.PRODUCT_CHAT, AgentCapability.INTENT_ROUTING),
         api_path="/api/v1/assistant/chat",
     )
 
-    def execute(self, payload: object) -> ChatSupportResult:
+    def execute(self, payload: object) -> ChatSupportResult | ChatSupportIntentResult:
+        if isinstance(payload, ChatSupportIntentTask):
+            # Import lazily so the service can also be used directly by
+            # command-line checks without creating an agents-package cycle.
+            from src.app.services.chat_intent import classify_chat_intent
+
+            decision = classify_chat_intent(
+                payload.message,
+                payload.task_state,
+                payload.history,
+            )
+            return ChatSupportIntentResult(
+                intent=decision.intent,
+                task_state=decision.task_state,
+                source=decision.source,
+            )
         if not isinstance(payload, ChatSupportTask):
             raise TypeError("Chat Support Agent nhận sai loại tác vụ")
         answer, out_of_scope = answer_timi_question(
             payload.message,
             payload.history,
             knowledge_context=payload.knowledge_context,
+            risk_context=payload.risk_context,
+            risk_guided_question=payload.risk_guided_question,
+            force_provider=payload.force_provider,
         )
         return ChatSupportResult(answer=answer, out_of_scope=out_of_scope)
 

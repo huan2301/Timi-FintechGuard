@@ -64,6 +64,46 @@ class StatsOut(BaseModel):
     pattern_count: int
 
 
+class AgentMetricOut(BaseModel):
+    """Durable execution and domain-event counters for one agent."""
+
+    agent_id: str
+    name: str
+    description: str
+    group: Literal["supervisor", "standalone"]
+    status: Literal["ready", "active", "legacy"]
+    capabilities: list[str] = Field(default_factory=list)
+    api_path: str
+    calls: int = Field(ge=0)
+    successes: int = Field(ge=0)
+    failures: int = Field(ge=0)
+    success_rate: float | None = Field(default=None, ge=0, le=1)
+    avg_latency_ms: float | None = Field(default=None, ge=0)
+    last_activity_at: datetime | None = None
+    domain_events: int = Field(default=0, ge=0)
+    domain_last_activity_at: datetime | None = None
+
+
+class SupervisorMetricOut(BaseModel):
+    id: str
+    name: str
+    routing_mode: str
+    managed_agent_count: int = Field(ge=0)
+    dispatches: int = Field(ge=0)
+    successes: int = Field(ge=0)
+    failures: int = Field(ge=0)
+    success_rate: float | None = Field(default=None, ge=0, le=1)
+    avg_latency_ms: float | None = Field(default=None, ge=0)
+    last_activity_at: datetime | None = None
+
+
+class AgentMetricsOut(BaseModel):
+    generated_at: datetime
+    supervisor: SupervisorMetricOut
+    managed_agents: list[AgentMetricOut]
+    intervention_agent: AgentMetricOut
+
+
 class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

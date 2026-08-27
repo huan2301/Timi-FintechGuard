@@ -122,6 +122,22 @@ def test_history_capability_question_stays_out_of_navigation_model() -> None:
 
 
 @pytest.mark.parametrize(
+    "message",
+    [
+        "Chức năng quét mã QR có những gì",
+        "Quét mã QR có quét được khuôn mặt không",
+        "Tôi muốn biết lịch sử có hiển thị chi tiết được không",
+    ],
+)
+def test_capability_questions_stay_on_chat_support_instead_of_navigation(message: str) -> None:
+    result = route_task(message, AssistantTaskState())
+
+    assert not result.handled
+    assert result.action is None
+    assert result.allow_contextual_navigation is False
+
+
+@pytest.mark.parametrize(
     ("message", "expected_route"),
     [
         ("Tôi muốn đổi mật khẩu", "/me?open=password"),

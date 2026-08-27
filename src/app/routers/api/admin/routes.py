@@ -11,29 +11,35 @@ from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.app.core.deps import require_admin
+from src.app.agents import get_multi_agent_supervisor
 from src.app.config import get_settings
+from src.app.core.deps import require_admin
 from src.app.core.security import decode_face_verification_token
 from src.app.db.session import get_db
+from src.app.models.assistant_chat_exchange import AssistantChatExchange
 from src.app.models.audit_log import AuditLog
 from src.app.models.blacklist import Blacklist
 from src.app.models.content_item import ContentItem
+from src.app.models.intervention_log import InterventionLog
 from src.app.models.risk_assessment import RiskLevel, TransactionRiskAssessment, TransactionWarning, WarningDecision
+from src.app.models.scam_guardian import ScamRiskEvent
 from src.app.models.scam_pattern import ScamPattern
 from src.app.models.scam_report import ScamReport
 from src.app.models.transaction import Transaction
 from src.app.models.user import User
 from src.app.schemas.admin import (
-    AdminTransactionOut,
-    ContentItemCreate,
-    ContentItemOut,
-    ContentItemUpdate,
     AdminFaceActionRequest,
+    AdminTransactionOut,
     AdminUserOut,
+    AgentMetricOut,
+    AgentMetricsOut,
     AuditLogOut,
     BlacklistCreate,
     BlacklistOut,
     BlacklistPage,
+    ContentItemCreate,
+    ContentItemOut,
+    ContentItemUpdate,
     ScamPatternCreate,
     ScamPatternOut,
     StatsOut,
@@ -41,6 +47,7 @@ from src.app.schemas.admin import (
     UserStatusUpdate,
 )
 from src.app.schemas.scam import ScamReportOut, ScamReportReview
+from src.app.services.agent_metrics import AgentMetricSnapshot, get_persisted_metrics
 from src.app.services.audit import add_audit_log
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -438,6 +445,148 @@ def stats(db: Session = Depends(get_db)) -> StatsOut:
         ),
         blacklist_size=db.scalar(select(func.count()).select_from(Blacklist)) or 0,
         pattern_count=db.scalar(select(func.count()).select_from(ScamPattern)) or 0,
+    )
+
+
+def _latest_created_at(db: Session, model: type, *conditions: object):
+    statement = select(func.max(model.created_at))
+    if conditions:
+        statement = statement.where(*conditions)
+    return db.scalar(statement)
+
+
+def _persistent_agent_events(db: Session, agent_id: str) -> tuple[int, object | None]:
+    """Return durable domain events associated with a specialist."""
+
+    if agent_id == "chat_support":
+        condition = AssistantChatExchange.response_source.in_(("model", "policy"))
+        return (
+            int(db.scalar(select(func.count()).select_from(AssistantChatExchange).where(condition)) or 0),
+            _latest_created_at(db, AssistantChatExchange, condition),
+        )
+    if agent_id == "task_navigator":
+        condition = AssistantChatExchange.response_source == "task_agent"
+        return (
+            int(db.scalar(select(func.count()).select_from(AssistantChatExchange).where(condition)) or 0),
+            _latest_created_at(db, AssistantChatExchange, condition),
+        )
+    if agent_id == "call_guardian":
+        return (
+            int(db.scalar(select(func.count()).select_from(ScamRiskEvent)) or 0),
+            _latest_created_at(db, ScamRiskEvent),
+        )
+    if agent_id == "intervention_agent":
+        return (
+            int(db.scalar(select(func.count()).select_from(InterventionLog)) or 0),
+            _latest_created_at(db, InterventionLog),
+        )
+    return 0, None
+
+
+def _agent_metric(
+    db: Session,
+    *,
+    agent_id: str,
+    name: str,
+    description: str,
+    group: str,
+    status: str,
+    capabilities: list[str],
+    api_path: str,
+    execution_metric: AgentMetricSnapshot,
+) -> AgentMetricOut:
+    domain_events, domain_last_activity_at = _persistent_agent_events(db, agent_id)
+    return AgentMetricOut(
+        agent_id=agent_id,
+        name=name,
+        description=description,
+        group=group,
+        status=status,
+        capabilities=capabilities,
+        api_path=api_path,
+        calls=execution_metric.calls,
+        successes=execution_metric.successful_calls,
+        failures=execution_metric.failed_calls,
+        success_rate=execution_metric.success_rate,
+        avg_latency_ms=execution_metric.avg_latency_ms,
+        last_activity_at=execution_metric.last_activity_at,
+        domain_events=domain_events,
+        domain_last_activity_at=domain_last_activity_at,
+    )
+
+
+@router.get("/agent-metrics", response_model=AgentMetricsOut)
+def agent_metrics(db: Session = Depends(get_db)) -> AgentMetricsOut:
+    """Expose supervisor and intervention metrics to the admin dashboard.
+
+    Execution metrics and domain-event counts are both sourced from Neon.
+    Agent executions are payload-free rows in ``agent_execution_events``;
+    domain events remain the business evidence generated by each specialist.
+    """
+
+    supervisor = get_multi_agent_supervisor()
+    descriptors = supervisor.registry.descriptors()
+    agent_ids = [descriptor.agent_id.value for descriptor in descriptors]
+    metrics_by_agent = get_persisted_metrics(
+        db,
+        [*agent_ids, "intervention_agent"],
+    )
+    managed_agents = [
+        _agent_metric(
+            db,
+            agent_id=descriptor.agent_id.value,
+            name=descriptor.name,
+            description=descriptor.description,
+            group="supervisor",
+            # A registered specialist is available continuously. Execution
+            # counts are shown separately, so an idle chatbot is not misreported as
+            # offline simply because it has not received a request yet.
+            status="active",
+            capabilities=[capability.value for capability in descriptor.capabilities],
+            api_path=descriptor.api_path,
+            execution_metric=metrics_by_agent[descriptor.agent_id.value],
+        )
+        for descriptor in descriptors
+    ]
+
+    supervisor_metrics = [metrics_by_agent[agent_id] for agent_id in agent_ids]
+    total_calls = sum(metric.calls for metric in supervisor_metrics)
+    total_successes = sum(metric.successful_calls for metric in supervisor_metrics)
+    total_failures = sum(metric.failed_calls for metric in supervisor_metrics)
+    total_latency = sum(
+        (metric.avg_latency_ms or 0) * metric.calls for metric in supervisor_metrics
+    )
+    latest_activity = max(
+        (metric.last_activity_at for metric in supervisor_metrics if metric.last_activity_at),
+        default=None,
+    )
+    intervention = _agent_metric(
+        db,
+        agent_id="intervention_agent",
+        name="InterventionAgent",
+        description="Luồng can thiệp nhiều bước, dừng ở mỗi bước để người dùng tự quyết định.",
+        group="standalone",
+        status="active",
+        capabilities=["multi_step_intervention", "human_in_the_loop"],
+        api_path="/api/v1/transactions/{transaction_id}/intervention",
+        execution_metric=metrics_by_agent["intervention_agent"],
+    )
+    return AgentMetricsOut(
+        generated_at=datetime.now(UTC),
+        supervisor={
+            "id": "timi_multi_agent_supervisor",
+            "name": "Multi-Agent Supervisor",
+            "routing_mode": "deterministic_explicit_agent_id",
+            "managed_agent_count": len(managed_agents),
+            "dispatches": total_calls,
+            "successes": total_successes,
+            "failures": total_failures,
+            "success_rate": total_successes / total_calls if total_calls else None,
+            "avg_latency_ms": total_latency / total_calls if total_calls else None,
+            "last_activity_at": latest_activity,
+        },
+        managed_agents=managed_agents,
+        intervention_agent=intervention,
     )
 
 

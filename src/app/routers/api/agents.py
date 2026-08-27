@@ -35,7 +35,7 @@ def agent_topology(
     descriptors = get_multi_agent_supervisor().registry.descriptors()
     return AgentTopologyOut(
         supervisor="timi_multi_agent_supervisor",
-        routing_mode="deterministic_explicit_agent_id",
+        routing_mode="chat_support_front_door",
         extra_llm_calls_per_dispatch=0,
         agents=[
             AgentDescriptorOut(

@@ -53,6 +53,7 @@ from src.app.schemas.risk import (
 )
 from src.app.schemas.scam import ScamReportCreate, ScamReportOut
 from src.app.services import risk_rules
+from src.app.services.agent_metrics import record_agent_call
 from src.app.services.audit import add_audit_log
 from src.app.services.bank_normalization import normalize_bank_name
 from src.app.services.blacklist_policy import promote_blacklist_if_eligible
@@ -491,12 +492,29 @@ def intervention(
     if transaction.transaction_status != TransactionStatus.AWAITING_DECISION:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Transaction is not awaiting a decision")
 
-    result = intervention_graph.invoke({
-        "db": db,
-        "transaction_id": transaction_id,
-        "action": payload.action,
-        "response": payload.response,
-    })
+    started = time.perf_counter()
+    try:
+        result = intervention_graph.invoke({
+            "db": db,
+            "transaction_id": transaction_id,
+            "action": payload.action,
+            "response": payload.response,
+        })
+    except Exception as exc:
+        record_agent_call(
+            "intervention_agent",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            success=False,
+            operation="intervention_turn",
+            failure_type=type(exc).__name__,
+        )
+        raise
+    record_agent_call(
+        "intervention_agent",
+        latency_ms=(time.perf_counter() - started) * 1000,
+        success=True,
+        operation="intervention_turn",
+    )
 
     if payload.action == "trust_recipient":
         trusted = db.scalar(select(TrustedRecipient).where(
@@ -580,6 +598,7 @@ def submit_decision(
     current_user: User = Depends(get_current_user),
 ) -> DecisionResponse:
     """Record the human decision; the server enforces warning countdowns."""
+    started = time.perf_counter()
     transaction = db.scalar(
         select(Transaction)
         .where(Transaction.id == transaction_id, Transaction.user_id == current_user.id)
@@ -772,6 +791,17 @@ def submit_decision(
         },
     )
     db.commit()
+    if warning is not None:
+        # A warning decision is the user-facing intervention turn. Count it
+        # even when the user cancels directly from the warning modal, because
+        # that path persists an InterventionLog without calling the graph
+        # endpoint first.
+        record_agent_call(
+            "intervention_agent",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            success=True,
+            operation="warning_decision",
+        )
     return DecisionResponse(
         transaction_id=transaction.id,
         transaction_status=transaction.transaction_status,

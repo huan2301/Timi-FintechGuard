@@ -83,6 +83,29 @@ _TRANSFER_QUESTION_CUES = (
     "nao",
     "co an toan",
 )
+_PRODUCT_QUESTION_CUES = (
+    "chuc nang",
+    "nhung gi",
+    "la gi",
+    "co the",
+    "co khong",
+    "duoc khong",
+    "tai sao",
+    "vi sao",
+    "xem gi",
+    "tra cuu",
+    "chi tiet",
+    "huong dan",
+    "lam sao",
+    "nhu the nao",
+    "nhu nao",
+)
+_TRANSFER_FIELD_QUESTION_CUES = (
+    "so tai khoan",
+    "ngan hang nao",
+    "bao nhieu tien",
+    "so tien",
+)
 _GUARDIAN_TERMS = (
     "nghe va bao ve cuoc goi",
     "bao ve cuoc goi",
@@ -413,6 +436,27 @@ def _is_transfer_amount_change_request(message: str) -> bool:
     return any(phrase in normalized for phrase in _TRANSFER_AMOUNT_CHANGE_CUES)
 
 
+def is_semantic_product_question(message: str) -> bool:
+    """Identify questions that must be answered by Chat Support AI.
+
+    Direct navigation commands stay deterministic, while capability and
+    comparison questions (for example QR versus Face ID) need the model's
+    language understanding before any route is considered.
+    """
+
+    normalized = _normalize(message)
+    return (
+        "?" in message
+        or any(cue in normalized for cue in _PRODUCT_QUESTION_CUES)
+        or bool(re.search(r"\bco\b.*\bkhong\b", normalized))
+    )
+
+
+def _is_transfer_field_question(message: str) -> bool:
+    normalized = _normalize(message)
+    return any(cue in normalized for cue in _TRANSFER_FIELD_QUESTION_CUES)
+
+
 def _is_history_guidance_question(message: str) -> bool:
     """Keep history capability questions out of contextual page navigation."""
 
@@ -726,6 +770,20 @@ def route_task(message: str, state: AssistantTaskState) -> TaskNavigationDecisio
             handled=False,
             answer=None,
             task_state=_empty_state(),
+            allow_contextual_navigation=False,
+        )
+
+    # Capability/comparison questions must reach Chat Support. Otherwise a
+    # phrase such as "quét QR có quét được khuôn mặt không?" can be mistaken
+    # for a route and the last matching feature wins. The sole exception is a
+    # short field question while an explicit transfer draft is in progress.
+    if is_semantic_product_question(message) and not (
+        state.task == "transfer" and _is_transfer_field_question(message)
+    ):
+        return TaskNavigationDecision(
+            handled=False,
+            answer=None,
+            task_state=_empty_state() if state.task == "transfer" else state,
             allow_contextual_navigation=False,
         )
 

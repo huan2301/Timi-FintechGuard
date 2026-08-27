@@ -91,6 +91,15 @@ def test_requested_scam_keywords_are_accent_insensitive_and_explained():
     ]
 
 
+def test_reward_claim_note_is_a_cautious_explainable_signal() -> None:
+    signals = _note_signals("Nhan thuong ve may bay sang My")
+
+    reward_signal = next(signal for signal in signals if signal.signal_type == "reward_claim_note")
+    assert reward_signal.severity == "medium"
+    assert reward_signal.score == 0.25
+    assert "chuyển phí" in reward_signal.explanation
+
+
 def test_impossible_travel_is_detected_from_opted_in_coarse_locations():
     now = datetime.now(UTC)
     previous = TransactionRiskContext(

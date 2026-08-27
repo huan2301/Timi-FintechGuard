@@ -52,7 +52,8 @@ type TabType =
   | "audit"
   | "email"
   | "content"
-  | "settings";
+  | "settings"
+  | "agent-metrics";
 
 type AdminTransaction = {
   id: string;
@@ -88,6 +89,44 @@ type AdminStats = {
   pattern_count: number;
 };
 
+type AdminAgentMetric = {
+  agent_id: string;
+  name: string;
+  description: string;
+  group: "supervisor" | "standalone";
+  status: "ready" | "active" | "legacy";
+  capabilities: string[];
+  api_path: string;
+  calls: number;
+  successes: number;
+  failures: number;
+  success_rate: number | null;
+  avg_latency_ms: number | null;
+  last_activity_at: string | null;
+  domain_events: number;
+  domain_last_activity_at: string | null;
+};
+
+type AdminSupervisorMetric = {
+  id: string;
+  name: string;
+  routing_mode: string;
+  managed_agent_count: number;
+  dispatches: number;
+  successes: number;
+  failures: number;
+  success_rate: number | null;
+  avg_latency_ms: number | null;
+  last_activity_at: string | null;
+};
+
+type AdminAgentMetrics = {
+  generated_at: string;
+  supervisor: AdminSupervisorMetric;
+  managed_agents: AdminAgentMetric[];
+  intervention_agent: AdminAgentMetric;
+};
+
 type AdminUser = {
   id: string;
   email: string;
@@ -119,6 +158,16 @@ function useAdminTransactions() {
     queryFn: async () => (await axiosInstance.get<AdminTransaction[]>("/v1/admin/transactions", { params: { limit: 100 } })).data,
     retry: false,
     refetchOnWindowFocus: false,
+  });
+}
+
+function useAdminAgentMetrics() {
+  return useQuery<AdminAgentMetrics>({
+    queryKey: ["admin-agent-metrics"],
+    queryFn: async () => (await axiosInstance.get<AdminAgentMetrics>("/v1/admin/agent-metrics")).data,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+    retry: false,
   });
 }
 
@@ -411,6 +460,7 @@ export default function AdminPage() {
     { key: "email" as TabType, label: "Email", icon: Mail },
     { key: "content" as TabType, label: "Nội dung", icon: Files },
     { key: "settings" as TabType, label: "Cài đặt AI", icon: Settings },
+    { key: "agent-metrics" as TabType, label: "Metric Agents", icon: Activity },
   ];
 
   const activeTabMeta = tabs.find((tab) => tab.key === activeTab)!;
@@ -543,6 +593,7 @@ export default function AdminPage() {
           {activeTab === "email" && <EmailTab />}
           {activeTab === "content" && <ContentManagementTab />}
           {activeTab === "settings" && <SettingsTab />}
+          {activeTab === "agent-metrics" && <AgentMetricsTab />}
         </div>
       </main>
       </div>
@@ -1954,6 +2005,231 @@ function EmailTab() {
   );
 }
 
+const AGENT_CAPABILITY_LABELS: Record<string, string> = {
+  product_chat: "Chat sản phẩm",
+  call_transcription: "Chuyển audio → text",
+  scam_risk_decision: "Đánh giá cuộc gọi",
+  transfer_drafting: "Tạo bản nháp chuyển tiền",
+  guardian_preference: "Thiết lập bảo vệ cuộc gọi",
+  contextual_navigation: "Điều hướng theo ngữ cảnh",
+  multi_step_intervention: "Can thiệp nhiều bước",
+  human_in_the_loop: "Chờ người dùng quyết định",
+};
+
+function formatAgentPercent(value: number | null): string {
+  return value == null ? "Chưa có dữ liệu" : `${(value * 100).toFixed(1)}%`;
+}
+
+function formatAgentLatency(value: number | null): string {
+  return value == null ? "—" : `${Math.round(value)} ms`;
+}
+
+function formatAgentDate(value: string | null): string {
+  if (!value) return "Chưa ghi nhận";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa ghi nhận";
+  return date.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
+}
+
+function AgentMetricsTab() {
+  const metricsQuery = useAdminAgentMetrics();
+  const metrics = metricsQuery.data;
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "ready" | "legacy">("all");
+
+  const rows = metrics
+    ? [
+        {
+          key: metrics.supervisor.id,
+          name: metrics.supervisor.name,
+          id: metrics.supervisor.id,
+          project: "Multi-Agent Supervisor",
+          source: "Neon PostgreSQL",
+          type: `${metrics.supervisor.managed_agent_count} agent trực thuộc`,
+          status: "active",
+          successRate: metrics.supervisor.success_rate,
+          calls: metrics.supervisor.dispatches,
+          failures: metrics.supervisor.failures,
+          events: metrics.managed_agents.reduce((total, agent) => total + agent.domain_events, 0),
+          latency: metrics.supervisor.avg_latency_ms,
+          lastActivity: metrics.supervisor.last_activity_at,
+        },
+        ...metrics.managed_agents.map((agent) => ({
+          key: agent.agent_id,
+          name: agent.name,
+          id: agent.agent_id,
+          project: "Multi-Agent Supervisor",
+          source: agent.api_path,
+          type: agent.capabilities.map((capability) => AGENT_CAPABILITY_LABELS[capability] ?? capability).join(" · "),
+          status: agent.status,
+          successRate: agent.success_rate,
+          calls: agent.calls,
+          failures: agent.failures,
+          events: agent.domain_events,
+          latency: agent.avg_latency_ms,
+          lastActivity: agent.last_activity_at ?? agent.domain_last_activity_at,
+        })),
+        {
+          key: metrics.intervention_agent.agent_id,
+          name: metrics.intervention_agent.name,
+          id: metrics.intervention_agent.agent_id,
+          project: "Standalone agent",
+          source: metrics.intervention_agent.api_path,
+          type: metrics.intervention_agent.capabilities.map((capability) => AGENT_CAPABILITY_LABELS[capability] ?? capability).join(" · "),
+          status: metrics.intervention_agent.status,
+          successRate: metrics.intervention_agent.success_rate,
+          calls: metrics.intervention_agent.calls,
+          failures: metrics.intervention_agent.failures,
+          events: metrics.intervention_agent.domain_events,
+          latency: metrics.intervention_agent.avg_latency_ms,
+          lastActivity: metrics.intervention_agent.last_activity_at ?? metrics.intervention_agent.domain_last_activity_at,
+        },
+      ]
+    : [];
+  const filteredRows = rows.filter((row) => statusFilter === "all" || row.status === statusFilter);
+  const statusLabel = (status: string) => status === "active" ? "Đang hoạt động" : status === "legacy" ? "Độc lập / legacy" : "Sẵn sàng";
+  const statusClass = (status: string) => status === "active"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : status === "legacy"
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : "border-slate-200 bg-slate-50 text-slate-600";
+
+  return (
+    <FalconCard
+      title="Metric Agents"
+      subtitle="Theo dõi Multi-Agent Supervisor, 3 agent trực thuộc và InterventionAgent"
+      bodyClassName="p-0"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Activity className="h-4 w-4 text-blue-500" />
+          <span>Metric lưu trên Neon · cập nhật tự động mỗi 10 giây</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Lọc theo trạng thái agent"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="all">Tất cả trạng thái</option>
+            <option value="active">Đang hoạt động</option>
+            <option value="ready">Sẵn sàng</option>
+            <option value="legacy">Độc lập / legacy</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => void metricsQuery.refetch()}
+            disabled={metricsQuery.isFetching}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${metricsQuery.isFetching ? "animate-spin" : ""}`} />
+            Làm mới
+          </button>
+        </div>
+      </div>
+      {metricsQuery.isLoading && (
+        <div className="flex items-center gap-2 py-8 text-sm text-slate-500">
+          <RefreshCw className="h-4 w-4 animate-spin text-blue-500" /> Đang tải metric agent...
+        </div>
+      )}
+      {metricsQuery.isError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          Không tải được metric agent. Kiểm tra quyền admin hoặc thử làm mới.
+        </div>
+      )}
+      {metrics && (
+        <div>
+          <div className="grid grid-cols-2 gap-px border-b border-slate-100 bg-slate-100 sm:grid-cols-4">
+            <div className="bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400">Agent trực thuộc</p>
+              <p className="mt-1 text-lg font-bold text-slate-800">{metrics.supervisor.managed_agent_count}</p>
+            </div>
+            <div className="bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400">Dispatch đã lưu</p>
+              <p className="mt-1 text-lg font-bold text-slate-800">{metrics.supervisor.dispatches.toLocaleString("vi-VN")}</p>
+            </div>
+            <div className="bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400">Tỉ lệ thành công</p>
+              <p className="mt-1 text-lg font-bold text-emerald-600">{formatAgentPercent(metrics.supervisor.success_rate)}</p>
+            </div>
+            <div className="bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400">Độ trễ trung bình</p>
+              <p className="mt-1 text-lg font-bold text-slate-800">{formatAgentLatency(metrics.supervisor.avg_latency_ms)}</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-[1140px] w-full text-left">
+              <thead className="border-b border-slate-100 bg-slate-50/80">
+                <tr className="text-[10px] uppercase tracking-wider text-slate-400">
+                  <th className="px-4 py-3 font-semibold">Agent</th>
+                  <th className="px-4 py-3 font-semibold">Project</th>
+                  <th className="px-4 py-3 font-semibold">Source</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Success</th>
+                  <th className="px-4 py-3 font-semibold">Calls</th>
+                  <th className="px-4 py-3 font-semibold">Failures</th>
+                  <th className="px-4 py-3 font-semibold">Events</th>
+                  <th className="px-4 py-3 font-semibold">Latency</th>
+                  <th className="px-4 py-3 font-semibold">Last activity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredRows.map((row) => (
+                  <tr key={row.key} className="group transition-colors hover:bg-blue-50/40">
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-[220px] items-center gap-3">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${row.key === metrics.supervisor.id ? "bg-blue-50 text-blue-600" : row.status === "legacy" ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-600"}`}>
+                          {row.key === metrics.supervisor.id ? <Settings className="h-4 w-4" /> : <Activity className="h-4 w-4" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">{row.name}</p>
+                          <p className="truncate text-[10px] text-slate-400">{row.id}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="whitespace-nowrap text-xs font-semibold text-slate-700">{row.project}</p>
+                      <p className="mt-0.5 text-[10px] text-slate-400">{row.key === metrics.supervisor.id ? metrics.supervisor.routing_mode : "Bounded domain agent"}</p>
+                    </td>
+                    <td className="max-w-[190px] px-4 py-3 text-xs text-slate-500">
+                      <span className="line-clamp-2">{row.source}</span>
+                    </td>
+                    <td className="max-w-[220px] px-4 py-3 text-xs text-slate-500">
+                      <span className="line-clamp-2">{row.type}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-[10px] font-semibold ${statusClass(row.status)}`}>
+                        <span className="mr-1.5 mt-0.5 h-1.5 w-1.5 rounded-full bg-current" />
+                        {statusLabel(row.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-bold text-slate-700">{formatAgentPercent(row.successRate)}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-slate-700">{row.calls.toLocaleString("vi-VN")}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-rose-600">{row.failures.toLocaleString("vi-VN")}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-slate-700">{row.events.toLocaleString("vi-VN")}</td>
+                    <td className="px-4 py-3 text-xs font-medium text-slate-600">{formatAgentLatency(row.latency)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{formatAgentDate(row.lastActivity)}</td>
+                  </tr>
+                ))}
+                {!filteredRows.length && (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-slate-500">Không có agent phù hợp với bộ lọc.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t border-slate-100 px-4 py-3 text-[10px] leading-relaxed text-slate-400">
+            “Calls”, “Success”, “Failures”, “Latency” và “Last activity” được tổng hợp từ bảng metric trên Neon. “Events” là số sự kiện nghiệp vụ đã lưu riêng. InterventionAgent được hiển thị độc lập vì không đăng ký trong Supervisor · cập nhật {formatAgentDate(metrics.generated_at)}.
+          </div>
+        </div>
+      )}
+    </FalconCard>
+  );
+}
+
 // ===== SETTINGS TAB =====
 function SettingsTab() {
   const [settings, setSettings] = useState({
@@ -2061,6 +2337,7 @@ function SettingsTab() {
           </div>
         </div>
       </FalconCard>
+
     </div>
   );
 }

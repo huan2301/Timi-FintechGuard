@@ -15,8 +15,24 @@ class AgentId(StrEnum):
     TASK_NAVIGATOR = "task_navigator"
 
 
+class ChatIntent(StrEnum):
+    """Bounded choices returned by the Chat Support front door.
+
+    The value is a hand-off signal only.  It is never a browser route or a
+    transaction command; the receiving specialist still validates the request
+    against its own least-privilege contract.
+    """
+
+    QUESTION = "question"
+    TRANSFER = "transfer"
+    NAVIGATION = "navigation"
+    GUARDIAN_PREFERENCE = "guardian_preference"
+    OUT_OF_SCOPE = "out_of_scope"
+
+
 class AgentCapability(StrEnum):
     PRODUCT_CHAT = "product_chat"
+    INTENT_ROUTING = "intent_routing"
     CALL_TRANSCRIPTION = "call_transcription"
     SCAM_RISK_DECISION = "scam_risk_decision"
     TRANSFER_DRAFTING = "transfer_drafting"
