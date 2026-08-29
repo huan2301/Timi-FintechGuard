@@ -187,7 +187,7 @@ export default function RegisterPage() {
   const inputNormal = "border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 hover:border-slate-300";
   const inputError = "border-red-300 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 bg-red-50/50";
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/40 flex w-full relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/40 flex w-full relative overflow-x-clip">
       {/* ===== BACKGROUND EFFECTS ===== */}
       <div className="absolute top-0 right-0 w-[700px] h-[700px] bg-blue-100/50 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4" />
       <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-indigo-100/40 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" />
@@ -255,7 +255,7 @@ export default function RegisterPage() {
       </div>
 
       {/* ===== RIGHT SIDE - FORM ===== */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
         <div className="w-full max-w-md">
           <Link to="/" className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition-colors hover:text-blue-600">
             <ArrowLeft className="h-4 w-4" />

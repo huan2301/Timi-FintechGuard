@@ -29,6 +29,8 @@ env/
 .DS_Store
 Thumbs.db
 
+mobile/
+
 # Data (never commit large data)
 data/
 *.db

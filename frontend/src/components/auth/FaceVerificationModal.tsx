@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Loader2, ScanFace, Shield, ShieldAlert } from "lucide-react";
 import { authApi } from "@/services/api/auth";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 export interface FaceMatchResult {
   matched: boolean;
@@ -65,6 +66,7 @@ export default function FaceVerificationModal({
   onSetupFace,
   mode = "verification",
 }: Props) {
+  useBodyScrollLock(true, mode === "enrollment" ? "face-enrollment-modal" : "face-verification-modal");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const stableTimerRef = useRef<number | null>(null);
@@ -152,21 +154,6 @@ export default function FaceVerificationModal({
     }, 1000);
     return () => window.clearInterval(timerId);
   }, [isLockedOut]);
-
-  useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const scrollTop = window.scrollY;
-    const previousHtmlOverflow = html.style.overflow;
-    const previousBodyOverflow = body.style.overflow;
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    return () => {
-      html.style.overflow = previousHtmlOverflow;
-      body.style.overflow = previousBodyOverflow;
-      window.scrollTo({ top: scrollTop, left: 0, behavior: "auto" });
-    };
-  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -642,7 +629,7 @@ export default function FaceVerificationModal({
           </p>
         )}
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:gap-3">
           <button
             type="button"
             onClick={() => {

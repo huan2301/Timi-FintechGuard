@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, lazy, Suspense } from "react";
 import { useAuthStore } from "@/stores/authStore";
@@ -13,6 +13,7 @@ import MissionPage from "@/pages/public/MissionPage";
 import MainLayout from "@/components/layout/MainLayout";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import LocationRequiredRoute from "@/components/auth/LocationRequiredRoute";
+import { parsePaymentQrSearch } from "@/utils/paymentQr";
 
 const DashboardPage = lazy(() => import("@/pages/finance/DashboardPage"));
 const TransferPage = lazy(() => import("@/pages/finance/TransferPage"));
@@ -25,6 +26,9 @@ const FaceEnrollmentPage = lazy(() => import("@/pages/onboarding/FaceEnrollmentP
 const QrPaymentPage = lazy(() => import("@/pages/finance/QrPaymentPage"));
 const NotificationSettingsPage = lazy(() => import("@/pages/account/NotificationSettingsPage"));
 const HelpPage = lazy(() => import("@/pages/support/HelpPage"));
+const ServicesPage = lazy(() => import("@/pages/public/ServicesPage"));
+const DownloadPage = lazy(() => import("@/pages/public/DownloadPage"));
+const DemoPage = lazy(() => import("@/pages/public/DemoPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -35,9 +39,9 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (token) {
-      fetchMe();
+      void fetchMe();
     }
-  }, []);
+  }, [fetchMe, token]);
 
   return <>{children}</>;
 }
@@ -48,6 +52,16 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
     <Navigate to="/dashboard" replace />
   ) : (
     <>{children}</>
+  );
+}
+
+/** Start valid public QR links at / so static hosts never need a deep-link rewrite. */
+function PaymentQrEntryRoute() {
+  const location = useLocation();
+  return parsePaymentQrSearch(location.search) ? (
+    <Navigate to={{ pathname: "/transfer", search: location.search }} replace />
+  ) : (
+    <HomePage />
   );
 }
 
@@ -72,11 +86,15 @@ function App() {
               }
             >
               <Routes>
-                <Route path="/" element={<HomePage />} />
+                <Route path="/" element={<PaymentQrEntryRoute />} />
                 <Route path="/terms" element={<LegalPage type="terms" />} />
                 <Route path="/privacy" element={<LegalPage type="privacy" />} />
                 <Route path="/mission" element={<MissionPage />} />
                 <Route path="/help" element={<HelpPage />} />
+                <Route path="/services" element={<ServicesPage />} />
+                <Route path="/download" element={<DownloadPage />} />
+                <Route path="/demo" element={<DemoPage />} />
+                <Route path="/cookies" element={<LegalPage type="cookies" />} />
                 <Route
                   path="/login"
                   element={

@@ -71,7 +71,7 @@ export default function LocationSetupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f3ff] w-full relative overflow-hidden flex items-center justify-center p-4">
+    <div className="min-h-screen w-full relative overflow-x-clip bg-[#f5f3ff] flex items-center justify-center p-4">
       {/* Soft background blobs */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <div className="absolute -top-32 -left-32 w-[480px] h-[480px] bg-violet-200/50 rounded-full blur-3xl" />

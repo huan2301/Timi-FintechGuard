@@ -1,6 +1,7 @@
 """Authenticated recipient lookup API."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
 from src.app.core.deps import get_current_user
 from src.app.core.security import create_recipient_lookup_token
@@ -10,7 +11,6 @@ from src.app.schemas.recipient import RecipientLookupRequest, RecipientLookupRes
 from src.app.services.bank_normalization import normalize_bank_name
 from src.app.services.recipient_lookup import RecipientLookupInvalid, RecipientLookupNotFound, lookup_recipient
 from src.app.services.timi_bank import TIMI_BANK_CODE
-from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/recipients", tags=["recipients"])
 
@@ -47,6 +47,12 @@ def resolve_recipient(
         bank_code=bank_code,
         account_name=result.account_name,
         source=result.source,
+        risk_status="caution" if result.needs_caution else "clear",
+        risk_message=(
+            "Người nhận có dấu hiệu rủi ro"
+            if result.needs_caution
+            else None
+        ),
         verification_token=create_recipient_lookup_token(
             user_id=str(current_user.id),
             account_number=payload.account_number,

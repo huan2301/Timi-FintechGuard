@@ -568,8 +568,8 @@ export default function MiniTimiAssistant() {
             <TimiChibi compact walking />
             <div className="min-w-0 flex-1 pr-1">
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-extrabold text-slate-900">{displayedTip.title}</p>
+                <div className="min-w-0 flex items-center gap-1.5">
+                  <p className="truncate text-sm font-extrabold text-slate-900">{displayedTip.title}</p>
                   <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-600 border border-blue-100">
                     <Zap className="h-2.5 w-2.5" />AI
                   </span>
@@ -605,7 +605,7 @@ export default function MiniTimiAssistant() {
                 </p>
                 <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               </div>
-              <p className="text-[11px] text-indigo-500 font-medium">
+                <p className="truncate text-[11px] text-indigo-500 font-medium">
                 {riskContext ? "Timi đang đọc các dấu hiệu để giúp bạn tự kiểm tra" : "Lịch sử chỉ thuộc về tài khoản của bạn"}
               </p>
             </div>
@@ -666,7 +666,7 @@ export default function MiniTimiAssistant() {
                     </div>
                   </div>
                 )}
-                <p className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
+                <p className={`max-w-[80%] break-words whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
                   chatMessage.role === "user"
                     ? "rounded-br-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
                     : "rounded-bl-md border border-slate-100 bg-white text-slate-700"

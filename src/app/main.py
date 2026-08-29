@@ -1,37 +1,69 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
+from src.app.config import get_settings
 from src.app.routers.api import (
-    newsletter,
     agents,
     assistant,
-    content,
     auth,
+    content,
     guardian,
     health,
+    legacy_compat,
+    newsletter,
     password_reset,
     recipients,
     support,
     transactions,
     url_safety,
-    legacy_compat,
 )
-from src.app.routers.api.admin import emails as admin_emails, routes as admin
-from src.app.config import get_settings
+from src.app.routers.api.admin import emails as admin_emails
+from src.app.routers.api.admin import routes as admin
 from src.app.services.face_verification import warm_face_model
 from src.app.services.passive_liveness import warm_passive_liveness_model
 
 settings = get_settings()
 settings.validate_production_secrets()
 
-app = FastAPI(title="FintechGuard API", version="2.0.0")
+
+def preload_face_ai() -> None:
+    """Warm Face ID when the deployment explicitly ships/preloads the models."""
+    if not settings.face_model_preload:
+        return
+    try:
+        warm_face_model()
+        warm_passive_liveness_model()
+    except Exception:
+        logging.getLogger(__name__).warning("Face AI warm-up failed; it will retry on first verification.")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    preload_face_ai()
+    yield
+
+
+app = FastAPI(title="FintechGuard API", version="2.0.0", lifespan=lifespan)
 media_directory = settings.project_root / "data" / "uploads"
 media_directory.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=media_directory), name="media")
+
+
+@app.middleware("http")
+async def add_browser_security_headers(request, call_next):
+    """Keep OAuth popup communication compatible in the single-service deploy."""
+    response = await call_next(request)
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
+    response.headers.setdefault("Referrer-Policy", "no-referrer-when-downgrade")
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -90,13 +122,3 @@ async def frontend_fallback(path: str):
     return frontend_response(path)
 
 
-@app.on_event("startup")
-def preload_face_ai() -> None:
-    """Warm Face ID when the deployment explicitly ships/preloads the models."""
-    if not settings.face_model_preload:
-        return
-    try:
-        warm_face_model()
-        warm_passive_liveness_model()
-    except Exception:
-        logging.getLogger(__name__).warning("Face AI warm-up failed; it will retry on first verification.")

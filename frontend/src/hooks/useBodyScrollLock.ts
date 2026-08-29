@@ -1,12 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
-/** Lock the document without changing the user's current viewport position. */
+/** Lock the document before paint without changing the user's current viewport position. */
 export function useBodyScrollLock(locked: boolean, lockKey = "default") {
   const currentLockKey = useRef(lockKey);
   const previousLockKey = useRef(lockKey);
   currentLockKey.current = lockKey;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!locked) return;
 
     const routeChanged = previousLockKey.current !== lockKey;

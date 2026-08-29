@@ -19,6 +19,11 @@ from src.app.services.timi_bank import TIMI_BANK_CODE, find_active_timi_recipien
 class RecipientLookupResult:
     account_name: str
     source: str
+    # A lookup warning is intentionally narrow: it means this exact account
+    # and bank pair has an active internal blacklist record.  It is not a
+    # verdict that the account owner is a scammer; the full risk assessment
+    # still happens later with amount, note, and behavioural evidence.
+    needs_caution: bool = False
 
 
 class RecipientLookupNotFound(Exception):
@@ -38,6 +43,27 @@ def _name_from_blacklist(entry: Blacklist) -> str | None:
     return None
 
 
+def _active_account_blacklist_entry(
+    db: Session, *, account_number: str, bank_code: str
+) -> Blacklist | None:
+    """Return only an exact active account-plus-bank blacklist match."""
+    entries = db.scalars(
+        select(Blacklist).where(
+            Blacklist.entity_type == "account",
+            Blacklist.entity_value == account_number,
+            Blacklist.is_active.is_(True),
+        )
+    ).all()
+    return next(
+        (
+            entry
+            for entry in entries
+            if normalize_bank_name(entry.bank) == bank_code
+        ),
+        None,
+    )
+
+
 def lookup_recipient(
     db: Session, *, user_id: object, account_number: str, bank_code: str
 ) -> RecipientLookupResult:
@@ -50,7 +76,22 @@ def lookup_recipient(
             raise RecipientLookupInvalid("Không thể chuyển tiền đến tài khoản quản trị viên.")
         if str(timi_user.id) == str(user_id):
             raise RecipientLookupInvalid("Không thể chuyển tiền vào chính tài khoản Timi của bạn.")
-        return RecipientLookupResult(timi_user.full_name, "timi")
+        blacklist_entry = _active_account_blacklist_entry(
+            db,
+            account_number=account_number,
+            bank_code=bank_code,
+        )
+        return RecipientLookupResult(
+            timi_user.full_name,
+            "timi",
+            needs_caution=blacklist_entry is not None,
+        )
+
+    blacklist_entry = _active_account_blacklist_entry(
+        db,
+        account_number=account_number,
+        bank_code=bank_code,
+    )
 
     directory_entry = db.scalar(
         select(RecipientDirectory).where(
@@ -60,21 +101,20 @@ def lookup_recipient(
         )
     )
     if directory_entry is not None:
-        return RecipientLookupResult(directory_entry.account_name, "directory")
-
-    blacklist_entries = db.scalars(
-        select(Blacklist).where(
-            Blacklist.entity_type == "account",
-            Blacklist.entity_value == account_number,
-            Blacklist.is_active.is_(True),
+        return RecipientLookupResult(
+            directory_entry.account_name,
+            "directory",
+            needs_caution=blacklist_entry is not None,
         )
-    ).all()
-    for entry in blacklist_entries:
-        if normalize_bank_name(entry.bank) != bank_code:
-            continue
-        account_name = _name_from_blacklist(entry)
+
+    if blacklist_entry is not None:
+        account_name = _name_from_blacklist(blacklist_entry)
         if account_name is not None:
-            return RecipientLookupResult(account_name, "blacklist")
+            return RecipientLookupResult(
+                account_name,
+                "blacklist",
+                needs_caution=True,
+            )
 
     trusted_recipient = db.scalar(
         select(TrustedRecipient).where(
@@ -84,6 +124,10 @@ def lookup_recipient(
         )
     )
     if trusted_recipient is not None:
-        return RecipientLookupResult(trusted_recipient.recipient_name, "trusted_recipient")
+        return RecipientLookupResult(
+            trusted_recipient.recipient_name,
+            "trusted_recipient",
+            needs_caution=blacklist_entry is not None,
+        )
 
     raise RecipientLookupNotFound

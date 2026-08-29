@@ -39,6 +39,10 @@ NavigationRoute: TypeAlias = Literal[
     "/privacy",
     "/mission",
     "/help",
+    "/services",
+    "/download",
+    "/demo",
+    "/cookies",
 ]
 
 
@@ -51,7 +55,8 @@ class ContextualNavigationDecision(BaseModel):
 
 _NAVIGATION_CUE_PATTERN = re.compile(
     r"\b(?:mo|vao|den|sang|ve|qua|dua|trang|man hinh|muc|phan|chuc nang|"
-    r"dieu khoan|bao mat|su menh|tro giup|ho tro|cau hoi thuong gap)\b"
+    r"dieu khoan|bao mat|su menh|tro giup|ho tro|cau hoi thuong gap|"
+    r"dich vu|tai app|tai ung dung|demo|cookie)\b"
 )
 _JSON_FENCE_PATTERN = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
@@ -78,6 +83,10 @@ Chỉ được chọn một route trong danh sách:
 - /privacy: mở Chính sách bảo mật dữ liệu.
 - /mission: mở Sứ mệnh của Timi.
 - /help: mở Trung tâm trợ giúp/câu hỏi thường gặp.
+- /services: mở trang Dịch vụ cùng các tính năng Timi.
+- /download: mở trang tải ứng dụng Timi.
+- /demo: mở trang xem demo Timi Guard.
+- /cookies: mở Chính sách cookie.
 
 Nếu không phải yêu cầu điều hướng rõ ràng, hoặc chỉ hỏi hướng dẫn/cách làm,
 route phải là null. Đặc biệt, "trang chuyển tiền" là /transfer; tuyệt đối

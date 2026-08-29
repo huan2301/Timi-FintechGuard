@@ -42,6 +42,8 @@ export interface RecipientLookupResponse {
   bank_code: string;
   account_name: string;
   source: "directory" | "blacklist" | "trusted_recipient" | "timi";
+  risk_status: "clear" | "caution";
+  risk_message?: string | null;
   verification_token: string;
 }
 

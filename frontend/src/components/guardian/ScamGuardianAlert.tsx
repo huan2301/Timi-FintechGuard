@@ -30,7 +30,7 @@ export default function ScamGuardianAlert() {
           <div className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">Không chuyển tiền</div>
           <div className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">Không cung cấp OTP/PIN</div>
         </div>
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:gap-3">
           <button onClick={dismissAlert} className="flex-1 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
             Đã hiểu
           </button>

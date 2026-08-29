@@ -92,7 +92,7 @@ export default function ForgotPasswordPage() {
     "w-full pl-12 pr-4 py-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10";
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-6 py-12">
+    <div className="relative flex min-h-screen w-full items-start justify-center overflow-x-clip bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-6 py-12 sm:items-center">
       <div className="absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/3 translate-x-1/4 rounded-full bg-blue-100/50 blur-3xl" />
       <div className="absolute bottom-0 left-0 h-[400px] w-[400px] -translate-x-1/4 translate-y-1/3 rounded-full bg-indigo-100/40 blur-3xl" />
 

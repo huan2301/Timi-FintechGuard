@@ -638,7 +638,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f3ff] w-full relative overflow-x-hidden">
+    <div className="min-h-screen w-full relative overflow-x-clip bg-[#f5f3ff]">
       {/* Soft background blobs */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <div className="absolute -top-32 -left-32 w-[480px] h-[480px] bg-violet-200/40 rounded-full blur-3xl" />
@@ -1133,7 +1133,7 @@ export default function ProfilePage() {
         {/* Footer */}
         <footer className="relative z-10 px-4 sm:px-6 lg:px-8 pb-8 pt-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
           <p>© 2024 Timi. All rights reserved.</p>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <button onClick={() => navigate("/privacy")} className="hover:text-slate-600 transition-colors">
               Privacy Policy
             </button>

@@ -82,6 +82,11 @@ const MAX_QR_LENGTH = 2048;
 const MAX_GENERIC_QR_LENGTH = 4096;
 const TIMI_BANK_CODE = "TIMI";
 
+// A generated QR opens the site root so it also works on static hosts that do
+// not rewrite deep links such as /transfer to index.html. The app redirects a
+// valid request to /transfer after it has loaded.
+export const PAYMENT_QR_QUERY_PARAMETER = "timi_payment";
+
 const SUSPICIOUS_TLDS = new Set([
   "click", "country", "gdn", "help", "icu", "link", "live", "monster",
   "online", "quest", "rest", "sbs", "shop", "site", "support", "top", "vip", "xyz",
@@ -151,6 +156,20 @@ export function createPaymentQr(input: PaymentQrData): string | null {
   return payload.length <= MAX_QR_LENGTH ? payload : null;
 }
 
+/** Build a shareable Timi web link that carries a validated payment QR payload. */
+export function createPaymentQrLink(input: PaymentQrData, origin: string): string | null {
+  const payload = createPaymentQr(input);
+  if (!payload) return null;
+
+  try {
+    const url = new URL("/", origin);
+    url.searchParams.set(PAYMENT_QR_QUERY_PARAMETER, payload);
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /** Rejects every QR type other than the documented Timi  payment payload. */
 export function parsePaymentQr(rawValue: string): PaymentQrData | null {
   const raw = rawValue.trim();
@@ -185,6 +204,27 @@ export function parsePaymentQr(rawValue: string): PaymentQrData | null {
       ...(note ? { note } : {}),
       ...(accountName ? { accountName } : {}),
     };
+  } catch {
+    return null;
+  }
+}
+
+/** Read a payment payload from the public Timi QR link query string. */
+export function parsePaymentQrSearch(search: string): PaymentQrData | null {
+  const payload = new URLSearchParams(search).get(PAYMENT_QR_QUERY_PARAMETER);
+  return payload ? parsePaymentQr(payload) : null;
+}
+
+/**
+ * Recognize a Timi payment link while scanning it inside the app. Its payment
+ * data is still treated as untrusted and the transfer page resolves the
+ * recipient again before a transaction can be reviewed.
+ */
+export function parsePaymentQrLink(rawValue: string): PaymentQrData | null {
+  try {
+    const url = new URL(rawValue.trim());
+    if (url.pathname !== "/" && url.pathname !== "/transfer") return null;
+    return parsePaymentQrSearch(url.search);
   } catch {
     return null;
   }
@@ -298,6 +338,9 @@ export function parseQrContent(rawValue: string): DecodedQrContent {
   const raw = rawValue.trim();
   const payment = parsePaymentQr(raw);
   if (payment) return { kind: "payment", rawValue: raw, payment };
+
+  const paymentLink = parsePaymentQrLink(raw);
+  if (paymentLink) return { kind: "payment", rawValue: raw, payment: paymentLink };
 
   const link = analyzeQrLink(raw);
   if (link) return link;

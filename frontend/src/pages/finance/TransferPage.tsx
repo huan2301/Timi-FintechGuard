@@ -32,7 +32,9 @@ import { collectRiskClientContext } from "@/utils/riskTelemetry";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useAuthStore } from "@/stores/authStore";
 import { useTimiAssistantStore } from "@/stores/timiAssistantStore";
+import UserAvatar from "@/components/profile/UserAvatar";
 import { ProfileNotificationBell } from "@/pages/account/ProfilePage";
+import { parsePaymentQrSearch } from "@/utils/paymentQr";
 
 interface TransferForm {
   recipient_account: string;
@@ -46,7 +48,11 @@ interface TransferForm {
 type RecipientLookupState =
   | { status: "idle"; message?: string }
   | { status: "loading" }
-  | { status: "success" }
+  | {
+      status: "success";
+      riskStatus: "clear" | "caution";
+      riskMessage?: string;
+    }
   | { status: "error"; message: string };
 
 const banks = [
@@ -211,6 +217,7 @@ export default function TransferPage() {
   const [txId, setTxId] = useState<string>("");
   const [recipientLookupState, setRecipientLookupState] =
     useState<RecipientLookupState>({ status: "idle" });
+  const [isRecipientRiskInfoOpen, setRecipientRiskInfoOpen] = useState(false);
   const [isBankPickerOpen, setBankPickerOpen] = useState(false);
   const [bankSearch, setBankSearch] = useState("");
   const [bankActiveIndex, setBankActiveIndex] = useState(0);
@@ -257,7 +264,9 @@ export default function TransferPage() {
       } | null
     );
     const assistantTransfer = incomingState?.AssistantTransfer;
-    const payment = assistantTransfer ?? incomingState?.QrPayment;
+    const payment = assistantTransfer
+      ?? incomingState?.QrPayment
+      ?? parsePaymentQrSearch(location.search);
     if (
       !payment ||
       typeof payment.accountNumber !== "string" ||
@@ -299,7 +308,7 @@ export default function TransferPage() {
     setSelectedRecentId(null);
     setAssistantReviewRequested(Boolean(assistantTransfer));
     navigate("/transfer", { replace: true, state: null });
-  }, [location.state, navigate]);
+  }, [location.search, location.state, navigate]);
 
   const decisionMutation = useMutation({
     mutationFn: async ({
@@ -459,7 +468,11 @@ export default function TransferPage() {
                 }
               : current,
           );
-          setRecipientLookupState({ status: "success" });
+          setRecipientLookupState({
+            status: "success",
+            riskStatus: result.risk_status,
+            riskMessage: result.risk_message ?? undefined,
+          });
         })
         .catch((error: any) => {
           if (cancelled) return;
@@ -479,6 +492,7 @@ export default function TransferPage() {
   }, [form.recipient_account, form.bank_code]);
 
   const handleAccountChange = (recipient_account: string) => {
+    setRecipientRiskInfoOpen(false);
     setSelectedRecentId(null);
     setForm((current) => ({
       ...current,
@@ -505,6 +519,7 @@ export default function TransferPage() {
   };
 
   const handleBankChange = (bank_code: string) => {
+    setRecipientRiskInfoOpen(false);
     setSelectedRecentId(null);
     setForm((current) => ({
       ...current,
@@ -517,6 +532,7 @@ export default function TransferPage() {
   };
 
   const handleBankSearchChange = (value: string) => {
+    setRecipientRiskInfoOpen(false);
     setBankSearch(value);
     setBankActiveIndex(0);
     setBankPickerOpen(true);
@@ -631,6 +647,9 @@ export default function TransferPage() {
     form.amount &&
     form.bank_code,
   );
+  const recipientNeedsCaution =
+    recipientLookupState.status === "success" &&
+    recipientLookupState.riskStatus === "caution";
   const amountRequiresFaceVerification = Number(form.amount || 0) >= 10_000_000;
   const blacklistRequiresFaceVerification = Boolean(
     riskData?.risk_level === "high"
@@ -700,7 +719,7 @@ export default function TransferPage() {
 
         <div className="relative z-10 max-w-[1400px] mx-auto">
           {/* ===== TOP HEADER ===== */}
-          <header className="px-4 sm:px-6 lg:px-8 pt-5 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <header style={{ marginLeft: "calc((100% - 100vw) / 2)" }} className="sticky top-16 z-40 flex w-screen max-w-none flex-col gap-2 border-b border-violet-100/60 bg-[#f5f3ff]/75 px-4 py-2 shadow-sm shadow-violet-100/20 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => navigate("/dashboard")}
@@ -713,17 +732,19 @@ export default function TransferPage() {
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                   Chuyển tiền
                 </h1>
-                <p className="text-sm text-slate-500 mt-0.5">
+                <p className="sr-only">
                   Gửi tiền an toàn đến người nhận của bạn
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex self-end items-center gap-3 sm:self-auto">
               <ProfileNotificationBell />
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
-                {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
-              </div>
+              <UserAvatar
+                avatarUrl={user?.avatar_url}
+                name={user?.full_name}
+                className="h-10 w-10 border border-white shadow-md"
+              />
             </div>
           </header>
 
@@ -845,7 +866,7 @@ export default function TransferPage() {
                       </button>
                     </div>
 
-                    <div className="flex items-start gap-4 overflow-x-clip pb-1">
+                    <div className="scrollbar-hide flex items-start gap-4 overflow-x-auto pb-1">
                       {/* Loading skeleton */}
                       {recentContactsQuery.isLoading &&
                         Array.from({ length: 4 }).map((_, i) => (
@@ -1025,7 +1046,13 @@ export default function TransferPage() {
                     <label className="text-sm font-medium text-slate-700 mb-1.5 block">
                       Tên chủ tài khoản
                     </label>
-                    <div className="relative min-h-[42px] flex items-center pl-10 pr-10 py-2.5 bg-slate-50 rounded-xl text-slate-800">
+                    <div
+                      className={`relative min-h-[42px] flex items-center pl-10 pr-10 py-2.5 rounded-xl text-slate-800 transition-colors ${
+                        recipientNeedsCaution
+                          ? "border border-amber-200 bg-amber-50/70"
+                          : "bg-slate-50"
+                      }`}
+                    >
                       <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       {recipientLookupState.status === "loading" ? (
                         <span className="flex items-center gap-2 text-sm text-slate-500">
@@ -1038,9 +1065,33 @@ export default function TransferPage() {
                         <span className="text-sm text-slate-400">Tên tài khoản</span>
                       )}
                       {recipientLookupState.status === "success" && (
-                        <CheckCircle2 className="absolute right-3.5 w-5 h-5 text-emerald-500" />
+                        recipientNeedsCaution ? (
+                          <AlertTriangle
+                            aria-label="Người nhận cần thận trọng"
+                            className="absolute right-3.5 h-5 w-5 text-amber-500"
+                          />
+                        ) : (
+                          <CheckCircle2 className="absolute right-3.5 w-5 h-5 text-emerald-500" />
+                        )
                       )}
                     </div>
+                    {recipientNeedsCaution && (
+                      <button
+                        type="button"
+                        onClick={() => setRecipientRiskInfoOpen(true)}
+                        aria-haspopup="dialog"
+                        className="mt-2 flex w-full items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5 font-medium text-amber-800">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                          <span>{recipientLookupState.riskMessage || "Người nhận có dấu hiệu rủi ro."}</span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-violet-600">
+                          <Shield className="h-3 w-3" />
+                          Bảo mật bởi AI
+                        </span>
+                      </button>
+                    )}
                     {recipientLookupState.status === "error" && (
                       <p className="mt-1.5 text-xs text-rose-600">
                         {recipientLookupState.message}
@@ -1342,10 +1393,65 @@ export default function TransferPage() {
             </div>
           </Modal>
 
+          <Modal
+            open={isRecipientRiskInfoOpen}
+            onClose={() => setRecipientRiskInfoOpen(false)}
+            ariaLabel="Thông tin cảnh báo rủi ro người nhận"
+            className="max-w-md"
+            showCloseButton
+          >
+            <div className="pr-8">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100">
+                <AlertTriangle className="h-6 w-6 text-amber-600" />
+              </div>
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">
+                Cảnh báo rủi ro
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-slate-900">
+                Timi dựa vào đâu để cảnh báo?
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Số tài khoản và ngân hàng này trùng với một cảnh báo trong dữ liệu đối chiếu của Timi.
+              </p>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-3.5">
+                <div className="flex items-center gap-2 text-sm font-semibold text-violet-900">
+                  <Shield className="h-4 w-4 text-violet-600" />
+                  Báo cáo từ cộng đồng
+                </div>
+                <p className="mt-1.5 text-xs leading-5 text-violet-800">
+                  Timi tổng hợp các báo cáo cần thận trọng để phát hiện sớm những tài khoản có dấu hiệu bất thường.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3.5">
+                <div className="flex items-center gap-2 text-sm font-semibold text-sky-900">
+                  <Shield className="h-4 w-4 text-sky-600" />
+                  Nguồn đối chiếu công khai
+                </div>
+                <p className="mt-1.5 text-xs leading-5 text-sky-800">
+                  Dữ liệu đối chiếu có thể bao gồm các cảnh báo công khai từ chongluadao.vn.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-sm leading-6 text-amber-900">
+                Hãy gọi hoặc liên hệ người nhận qua một kênh độc lập và xem xét kỹ trước khi giao dịch.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setRecipientRiskInfoOpen(false)}
+              className="mt-5 w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              Đã hiểu, tôi sẽ kiểm tra kỹ
+            </button>
+          </Modal>
+
           {/* Footer */}
           <footer className="relative z-10 px-4 sm:px-6 lg:px-8 pb-8 pt-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
             <p>© 2024 Timi. All rights reserved.</p>
-            <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
               <button onClick={() => navigate("/privacy")} className="hover:text-slate-600 transition-colors">
                 Privacy Policy
               </button>
@@ -1379,13 +1485,13 @@ export default function TransferPage() {
   /* ===================== REVIEW STEP ===================== */
   if (step === "review") {
     return (
-      <div className="min-h-screen bg-[#f5f3ff] w-full relative overflow-hidden">
+      <div className="min-h-screen w-full relative overflow-x-clip bg-[#f5f3ff]">
         <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
           <div className="absolute -top-32 -left-32 w-[420px] h-[420px] bg-violet-200/40 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-0 w-[380px] h-[380px] bg-fuchsia-200/30 rounded-full blur-3xl" />
         </div>
         <div className="relative z-10 max-w-3xl mx-auto">
-          <header className="px-4 sm:px-6 pt-5 pb-4 flex items-center gap-3">
+          <header style={{ marginLeft: "calc((100% - 100vw) / 2)" }} className="sticky top-16 z-40 flex w-screen max-w-none items-center gap-3 border-b border-violet-100/60 bg-[#f5f3ff]/75 px-4 py-2 shadow-sm shadow-violet-100/20 backdrop-blur-md sm:px-6">
             <button
               onClick={() => setStep("form")}
               className="p-2 hover:bg-white/70 rounded-full transition-colors"
@@ -1394,7 +1500,7 @@ export default function TransferPage() {
             </button>
             <div>
               <h1 className="text-xl font-bold text-slate-900">Xác nhận giao dịch</h1>
-              <p className="text-sm text-slate-500">Kiểm tra lại thông tin trước khi tiếp tục</p>
+              <p className="sr-only">Kiểm tra lại thông tin trước khi tiếp tục</p>
             </div>
           </header>
 
@@ -1631,7 +1737,7 @@ export default function TransferPage() {
   /* ===================== SUCCESS ===================== */
   if (step === "success") {
     return (
-      <div className="min-h-screen bg-[#f5f3ff] w-full flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-x-clip bg-[#f5f3ff]">
         <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
           <div className="absolute top-1/3 left-1/3 w-[400px] h-[400px] bg-emerald-200/30 rounded-full blur-3xl" />
           <div className="absolute bottom-1/3 right-1/3 w-[350px] h-[350px] bg-violet-200/25 rounded-full blur-3xl" />

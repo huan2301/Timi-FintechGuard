@@ -247,6 +247,26 @@ _NAVIGATION_INTENTS: tuple[tuple[str, tuple[str, ...], str], ...] = (
         ),
         "Đã mở Trung tâm trợ giúp. Bạn có thể xem câu hỏi thường gặp hoặc thông tin liên hệ hỗ trợ.",
     ),
+    (
+        "/services",
+        ("dich vu", "cac dich vu", "thanh toan hoa don", "nap dien thoai", "quan ly chi tieu"),
+        "Đã mở trang Dịch vụ để bạn xem các tính năng Timi.",
+    ),
+    (
+        "/download",
+        ("tai app", "tai ung dung", "cai app", "mo app"),
+        "Đã mở trang tải ứng dụng Timi.",
+    ),
+    (
+        "/demo",
+        ("xem demo", "demo ai", "ai anti scam", "cach bao ve"),
+        "Đã mở demo Timi Guard để bạn xem cách Timi phát hiện rủi ro.",
+    ),
+    (
+        "/cookies",
+        ("cookie", "chinh sach cookie"),
+        "Đã mở Chính sách cookie của Timi.",
+    ),
 )
 _NAVIGATION_RESPONSE_OVERRIDES: tuple[tuple[str, tuple[str, ...], str], ...] = (
     (
@@ -614,6 +634,45 @@ def navigation_action_for_route(
                 history_message=_redact_history_message(history_message or ""),
             )
     return None
+
+
+def block_completed_setup_navigation(
+    decision: TaskNavigationDecision,
+    *,
+    face_enrolled: bool,
+    pin_configured: bool,
+) -> TaskNavigationDecision:
+    """Keep setup-only pages unavailable after the account already completed them.
+
+    The navigation agent receives only these two boolean capabilities, not a
+    user record.  This preserves its least-privilege boundary while ensuring a
+    stale or repeated chat command cannot reopen an onboarding flow.
+    """
+    route = decision.action.route if decision.action and decision.action.type == "navigate_app" else None
+    if route == "/setup-face" and face_enrolled:
+        return TaskNavigationDecision(
+            handled=True,
+            answer=(
+                "Face ID của bạn đã được thiết lập, nên Timi không mở lại phần "
+                "đăng ký khuôn mặt."
+            ),
+            task_state=decision.task_state,
+            history_message=decision.history_message,
+            allow_contextual_navigation=False,
+        )
+    if route == "/setup-pin" and pin_configured:
+        return TaskNavigationDecision(
+            handled=True,
+            answer=(
+                "Bạn đã thiết lập mã PIN giao dịch. Nếu cần đổi PIN, hãy mở phần "
+                "cập nhật mã PIN trong Hồ sơ."
+            ),
+            task_state=decision.task_state,
+            action=AssistantUiAction(type="navigate_app", route="/me?open=pin"),
+            history_message=decision.history_message,
+            allow_contextual_navigation=False,
+        )
+    return decision
 
 
 def _contains_whole_phrase(text: str, phrase: str) -> bool:

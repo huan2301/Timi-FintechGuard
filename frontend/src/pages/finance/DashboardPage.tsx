@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import {
   Shield,
@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Target,
   CheckCircle2,
+  BookOpen,
   Star,
   Mail,
   Phone,
@@ -20,7 +21,15 @@ import {
   Instagram,
 } from "lucide-react";
 import { useState, useEffect, useRef, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "@/services/api/axios";
+
+type ManagedContent = {
+  id: string;
+  title: string | null;
+  body: string | null;
+  image_url: string | null;
+};
 
 const stats = [
   { value: "4,2T+", label: "Tài sản quản lý" },
@@ -175,6 +184,10 @@ export default function HomePage() {
   const [newsletterStatus, setNewsletterStatus] = useState<string | null>(null);
   const [newsletterError, setNewsletterError] = useState<string | null>(null);
   const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
+  const managedQuery = useQuery({
+    queryKey: ["public-content", "dashboard"],
+    queryFn: async () => (await axiosInstance.get<ManagedContent[]>("/v1/content/dashboard")).data,
+  });
 
   const handleNewsletterSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -309,6 +322,57 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ===== GETTING STARTED ===== */}
+      <section className="bg-[#F3F5FF] py-10 sm:py-12">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 lg:flex-row lg:items-center lg:justify-between lg:px-12 xl:px-20">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-600 shadow-sm">
+              <BookOpen className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-bold uppercase tracking-widest text-blue-600">Hướng dẫn nhanh</p>
+              <h2 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">Chưa biết bắt đầu từ đâu?</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
+                Xem hướng dẫn từng bước để đăng nhập, chuyển tiền an toàn, quét QR và sử dụng các lớp bảo vệ của Timi.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/demo")}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
+          >
+            Xem hướng dẫn sử dụng
+            <ArrowRight className="h-5 w-5" />
+          </button>
+        </div>
+      </section>
+
+      {managedQuery.data?.length ? (
+        <section className="bg-[#F3F5FF] px-6 py-16 lg:px-12 xl:px-20">
+          <div className="mx-auto max-w-6xl">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-widest text-violet-600">Cập nhật từ Timi</p>
+                <h2 className="mt-3 text-3xl font-bold text-slate-950">Thông tin dành cho bạn</h2>
+              </div>
+              <span className="text-sm text-slate-500">Nội dung được quản lý từ Admin</span>
+            </div>
+            <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {managedQuery.data.map((item) => (
+                <article key={item.id} className="overflow-hidden rounded-3xl border border-violet-100 bg-white shadow-sm">
+                  {item.image_url && <img src={item.image_url} alt={item.title || "Thông tin từ Timi"} className="h-40 w-full object-contain" />}
+                  <div className="p-5">
+                    <h3 className="font-bold text-slate-900">{item.title || "Thông tin từ Timi"}</h3>
+                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-500">{item.body}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* ===== SERVICES SECTION ===== */}
       <section className="py-24 bg-white w-full">
         <div className="w-full px-6 lg:px-12 xl:px-20">
@@ -403,7 +467,7 @@ export default function HomePage() {
               </div>
 
               <button
-                onClick={() => navigate("/dashboard")}
+                onClick={() => navigate("/services")}
                 className="mt-10 px-8 py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 flex items-center gap-2 group"
               >
                 Khám phá Timi
@@ -504,33 +568,33 @@ export default function HomePage() {
       </section>
 
       {/* ===== FOOTER ===== */}
-      <footer className="bg-slate-950 text-slate-400 py-16 w-full">
-        <div className="w-full px-6 lg:px-12 xl:px-20">
-          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-12 mb-12">
+      <footer className="w-full overflow-hidden bg-slate-950 py-8 text-slate-400 sm:py-12">
+        <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-20">
+          <div className="mb-6 grid grid-cols-2 gap-x-5 gap-y-6 sm:gap-8 md:mb-12 md:grid-cols-2 lg:grid-cols-5">
             {/* Brand */}
-            <div className="lg:col-span-2">
-              <div className="flex items-center gap-2.5 mb-5">
+            <div className="col-span-2 min-w-0 lg:col-span-2">
+              <div className="mb-4 flex items-center gap-2.5 sm:mb-5">
                 <div className="w-9 h-9 rounded-xl overflow-hidden">
                   <img src="/logo.png" alt="Timi" className="h-full w-full object-cover" />
                 </div>
                 <span className="font-display text-2xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Timi</span>
               </div>
-              <p className="text-sm leading-relaxed max-w-sm mb-6">
+              <p className="mb-4 max-w-sm text-xs leading-5 sm:mb-6 sm:text-sm sm:leading-relaxed">
                 Nền tảng tài chính thông minh được AI bảo vệ. Sứ mệnh của Timi là giúp mọi giao dịch của bạn an toàn hơn.
               </p>
               <div className="flex gap-3">
                 {[Facebook, Twitter, Linkedin, Instagram].map((Icon, i) => (
-                  <button key={i} className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all">
+                  <span key={i} aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-slate-400 sm:h-10 sm:w-10">
                     <Icon className="w-4 h-4" />
-                  </button>
+                  </span>
                 ))}
               </div>
             </div>
 
             {/* Links */}
-            <div>
-              <h4 className="text-white font-semibold mb-5">Dịch vụ</h4>
-              <ul className="space-y-3 text-sm">
+            <div className="min-w-0">
+              <h4 className="mb-3 text-sm font-semibold text-white sm:mb-5">Dịch vụ</h4>
+              <ul className="space-y-1.5 text-xs leading-5 sm:space-y-3 sm:text-sm">
                 <li><button onClick={() => navigate("/transfer")} className="hover:text-blue-400 transition-colors">Chuyển tiền</button></li>
                 <li><button onClick={() => navigate("/qr")} className="hover:text-blue-400 transition-colors">Thanh toán QR</button></li>
                 <li><button onClick={() => navigate("/history")} className="hover:text-blue-400 transition-colors">Lịch sử giao dịch</button></li>
@@ -538,19 +602,19 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div>
-              <h4 className="text-white font-semibold mb-5">Timi</h4>
-              <ul className="space-y-3 text-sm">
+            <div className="min-w-0">
+              <h4 className="mb-3 text-sm font-semibold text-white sm:mb-5">Timi</h4>
+              <ul className="space-y-1.5 text-xs leading-5 sm:space-y-3 sm:text-sm">
                 <li><button onClick={() => navigate("/dashboard")} className="hover:text-blue-400 transition-colors">Tổng quan</button></li>
                 <li><button onClick={() => navigate("/me")} className="hover:text-blue-400 transition-colors">Tài khoản</button></li>
                 <li><button onClick={() => navigate("/history")} className="hover:text-blue-400 transition-colors">Lịch sử hoạt động</button></li>
-                <li><button onClick={() => navigate("/setup-face")} className="hover:text-blue-400 transition-colors">Bảo mật khuôn mặt</button></li>
+                <li><button onClick={() => navigate("/dashboard")} className="hover:text-blue-400 transition-colors">Bảo mật khuôn mặt</button></li>
               </ul>
             </div>
 
-            <div>
-              <h4 className="text-white font-semibold mb-5">Liên hệ</h4>
-              <ul className="space-y-3 text-sm">
+            <div className="col-span-2 min-w-0 lg:col-span-1">
+              <h4 className="mb-3 text-sm font-semibold text-white sm:mb-5">Liên hệ</h4>
+              <ul className="space-y-1.5 text-xs leading-5 sm:space-y-3 sm:text-sm">
                 <li className="flex items-center gap-2">
                   <Mail className="w-4 h-4" /> support@timi.com
                 </li>
@@ -564,13 +628,13 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="border-t border-slate-900 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm">© 2026 Timi. Bảo lưu mọi quyền.</p>
-            <div className="flex gap-6 text-sm">
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-900 pt-5 text-xs sm:gap-4 sm:pt-8 sm:text-sm md:flex-row">
+            <p>© 2026 Timi. Bảo lưu mọi quyền.</p>
+            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 sm:gap-x-6 sm:gap-y-2 md:justify-end">
               <button onClick={() => navigate("/help")} className="hover:text-blue-400 transition-colors">Help Center</button>
               <button onClick={() => navigate("/privacy")} className="hover:text-blue-400 transition-colors">Chính sách bảo mật</button>
               <button onClick={() => navigate("/terms")} className="hover:text-blue-400 transition-colors">Điều khoản sử dụng</button>
-              <a href="#" className="hover:text-blue-400 transition-colors">Cookie</a>
+              <Link to="/cookies" className="hover:text-blue-400 transition-colors">Cookie</Link>
             </div>
           </div>
         </div>

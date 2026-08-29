@@ -22,7 +22,20 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const setAuth = useAuthStore((s) => s.setAuth);
-  const registrationEmail = (location.state as { registrationEmail?: string } | null)?.registrationEmail;
+  const loginState = location.state as {
+    registrationEmail?: string;
+    returnTo?: unknown;
+  } | null;
+  const registrationEmail = loginState?.registrationEmail;
+  const returnTo = typeof loginState?.returnTo === "string"
+    && loginState.returnTo.startsWith("/")
+    && !loginState.returnTo.startsWith("//")
+    && !loginState.returnTo.startsWith("/login")
+    ? loginState.returnTo
+    : null;
+  const destinationAfterLogin = useCallback((role: string) => (
+    role === "admin" ? "/admin" : returnTo ?? "/dashboard"
+  ), [returnTo]);
   const [form, setForm] = useState({ email: registrationEmail ?? "", password: "" });
   const [showPass, setShowPass] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -33,14 +46,14 @@ export default function LoginPage() {
 
   const finishGoogleLogin = useCallback((data: TokenResponse) => {
     setAuth(data.access_token, data.user, rememberLogin);
-    navigate(data.user.role === "admin" ? "/admin" : "/dashboard", { replace: true });
-  }, [navigate, rememberLogin, setAuth]);
+    navigate(destinationAfterLogin(data.user.role), { replace: true });
+  }, [destinationAfterLogin, navigate, rememberLogin, setAuth]);
 
   const loginMutation = useMutation({
     mutationFn: authApi.login,
     onSuccess: async (data) => {
       setAuth(data.access_token, data.user, rememberLogin);
-      navigate(data.user.role === "admin" ? "/admin" : "/dashboard", { replace: true });
+      navigate(destinationAfterLogin(data.user.role), { replace: true });
     },
     onError: (err: any) => {
       setErrors({ password: err.response?.data?.detail || "Sai email hoặc mật khẩu" });
@@ -333,6 +346,7 @@ export default function LoginPage() {
               {hasGoogleSignInConfig() && (
                 <GoogleSignInButton
                   disabled={googleLoginMutation.isPending || completeGooglePhoneMutation.isPending}
+                  isLoading={googleLoginMutation.isPending || completeGooglePhoneMutation.isPending}
                   onCredential={handleGoogleCredential}
                   onLoadError={handleGoogleLoadError}
                 />

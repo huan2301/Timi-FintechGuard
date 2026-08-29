@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 
 import {
-  createPaymentQr,
+  createPaymentQrLink,
   parseQrContent,
   paymentBanks,
   type DecodedQrContent,
@@ -37,6 +37,8 @@ import {
 import { urlSafetyApi } from "@/services/api/urlSafety";
 import { useAuthStore } from "@/stores/authStore";
 import { ProfileNotificationBell } from "@/pages/account/ProfilePage";
+import UserAvatar from "@/components/profile/UserAvatar";
+import { getPublicWebOrigin } from "@/utils/publicWebUrl";
 
 const CAMERA_READER_ID = "timi-qr-camera";
 
@@ -86,7 +88,7 @@ export default function QrPaymentPage() {
   });
   const [generatedQr, setGeneratedQr] = useState<{
     image: string;
-    payload: string;
+    paymentLink: string;
     payment: PaymentQrData;
   } | null>(null);
   const [createError, setCreateError] = useState("");
@@ -292,8 +294,16 @@ export default function QrPaymentPage() {
       ...(form.note.trim() ? { note: form.note.trim() } : {}),
       accountName: ownAccountName,
     };
-    const payload = createPaymentQr(payment);
-    if (!payload) {
+    const publicWebOrigin = getPublicWebOrigin(window.location.origin);
+    if (!publicWebOrigin) {
+      setCreateError(
+        "VITE_PUBLIC_WEB_URL không hợp lệ. Hãy đặt URL HTTPS của web đã deploy rồi build lại.",
+      );
+      return;
+    }
+
+    const paymentLink = createPaymentQrLink(payment, publicWebOrigin);
+    if (!paymentLink) {
       setCreateError(
         "Kiểm tra lại ngân hàng, số tài khoản (6–19 chữ số), số tiền và nội dung.",
       );
@@ -302,13 +312,13 @@ export default function QrPaymentPage() {
 
     setIsCreating(true);
     try {
-      const image = await QRCode.toDataURL(payload, {
+      const image = await QRCode.toDataURL(paymentLink, {
         errorCorrectionLevel: "M",
         margin: 1,
         width: 440,
         color: { dark: "#171717", light: "#FFFFFF" },
       });
-      setGeneratedQr({ image, payload, payment });
+      setGeneratedQr({ image, paymentLink, payment });
     } catch {
       setCreateError("Không thể tạo hình QR. Vui lòng thử lại.");
     } finally {
@@ -335,12 +345,12 @@ export default function QrPaymentPage() {
         await navigator.share({
           title: "Mã QR nhận tiền Timi",
           text: "Quét mã này để chuyển tiền cho tôi qua Timi",
+          url: generatedQr.paymentLink,
           files: [file],
         });
       } else {
-        // Fallback: copy payload
-        await navigator.clipboard.writeText(generatedQr.payload);
-        alert("Đã sao chép nội dung QR vào clipboard.");
+        await navigator.clipboard.writeText(generatedQr.paymentLink);
+        alert("Đã sao chép liên kết thanh toán vào clipboard.");
       }
     } catch {
       // User cancelled or share failed – ignore
@@ -348,7 +358,7 @@ export default function QrPaymentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f3ff] w-full relative overflow-x-hidden">
+    <div className="min-h-screen w-full relative overflow-x-clip bg-[#f5f3ff]">
       {/* Soft background blobs */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <div className="absolute -top-32 -left-32 w-[480px] h-[480px] bg-violet-200/40 rounded-full blur-3xl" />
@@ -358,7 +368,7 @@ export default function QrPaymentPage() {
 
       <div className="relative z-10 max-w-[1400px] mx-auto">
         {/* ===== TOP HEADER ===== */}
-        <header className="px-4 sm:px-6 lg:px-8 pt-5 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <header style={{ marginLeft: "calc((100% - 100vw) / 2)" }} className="sticky top-16 z-40 flex w-screen max-w-none flex-col gap-2 border-b border-violet-100/60 bg-[#f5f3ff]/75 px-4 py-2 shadow-sm shadow-violet-100/20 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate("/dashboard")}
@@ -371,7 +381,7 @@ export default function QrPaymentPage() {
               <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                 {mode === "scan" ? "Quét Mã QR" : "Nhận tiền"}
               </h1>
-              <p className="text-sm text-slate-500 mt-0.5">
+              <p className="sr-only">
                 {mode === "scan"
                   ? "Quét mã QR để kiểm tra đường dẫn hoặc thực hiện thanh toán an toàn"
                   : "Chia sẻ mã QR hoặc thông tin thanh toán để nhận tiền"}
@@ -379,11 +389,13 @@ export default function QrPaymentPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex self-end items-center gap-3 sm:self-auto">
             <ProfileNotificationBell />
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
-              {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
-            </div>
+            <UserAvatar
+              avatarUrl={user?.avatar_url}
+              name={user?.full_name}
+              className="h-10 w-10 border border-white shadow-md"
+            />
           </div>
         </header>
 
@@ -640,10 +652,10 @@ export default function QrPaymentPage() {
                     /* Generated QR display – matches Receive Money image */
                     <div className="flex flex-col items-center text-center">
                       <p className="text-sm font-semibold text-slate-500 mb-1">
-                        Scan to pay with Timi
+                        Quét để mở yêu cầu thanh toán Timi
                       </p>
                       <p className="text-xs text-slate-400 mb-5">
-                        Chia sẻ mã QR này với người gửi
+                        Người gửi chưa đăng nhập sẽ đăng nhập rồi quay lại đúng giao dịch này
                       </p>
 
                       <div className="relative bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
@@ -865,7 +877,7 @@ export default function QrPaymentPage() {
         {/* Footer */}
         <footer className="relative z-10 px-4 sm:px-6 lg:px-8 pb-8 pt-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
           <p>© 2024 Timi. All rights reserved.</p>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <button onClick={() => navigate("/privacy")} className="hover:text-slate-600 transition-colors">
               Privacy Policy
             </button>

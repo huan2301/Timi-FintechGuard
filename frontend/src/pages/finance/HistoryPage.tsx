@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
+import UserAvatar from "@/components/profile/UserAvatar";
 import { ProfileNotificationBell } from "@/pages/account/ProfilePage";
 import Modal from "@/components/ui/Modal";
 
@@ -218,16 +219,17 @@ export default function HistoryPage() {
     refetchOnMount: "always",
     staleTime: 0,
   });
+  const {
+    hasNextPage,
+    isFetchingNextPage,
+    isError,
+    fetchNextPage,
+  } = historyQuery;
   useEffect(() => {
-    if (!historyQuery.hasNextPage || historyQuery.isFetchingNextPage || historyQuery.isError)
+    if (!hasNextPage || isFetchingNextPage || isError)
       return;
-    void historyQuery.fetchNextPage();
-  }, [
-    historyQuery.hasNextPage,
-    historyQuery.isFetchingNextPage,
-    historyQuery.isError,
-    historyQuery.fetchNextPage,
-  ]);
+    void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isError, isFetchingNextPage]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -447,7 +449,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f3ff] w-full relative overflow-x-hidden">
+    <div className="min-h-screen w-full relative overflow-x-clip bg-[#f5f3ff]">
       {/* Soft background */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <div className="absolute -top-32 -left-32 w-[480px] h-[480px] bg-violet-200/40 rounded-full blur-3xl" />
@@ -457,7 +459,7 @@ export default function HistoryPage() {
 
       <div className="relative z-10 max-w-[1400px] mx-auto">
         {/* ===== HEADER ===== */}
-        <header className="px-4 sm:px-6 lg:px-8 pt-5 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <header style={{ marginLeft: "calc((100% - 100vw) / 2)" }} className="sticky top-16 z-40 flex w-screen max-w-none flex-col gap-2 border-b border-violet-100/60 bg-[#f5f3ff]/75 px-4 py-2 shadow-sm shadow-violet-100/20 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate("/dashboard")}
@@ -471,8 +473,8 @@ export default function HistoryPage() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2.5 bg-white rounded-full px-5 py-3 shadow-sm border border-violet-100 w-full sm:w-72">
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5 bg-white rounded-full px-5 py-3 shadow-sm border border-violet-100 sm:w-72 sm:flex-none">
               <Search className="w-5 h-5 text-slate-400 shrink-0" />
               <input
                 type="text"
@@ -515,9 +517,11 @@ export default function HistoryPage() {
               <Filter className="w-5 h-5 text-slate-600" />
             </button>
             <ProfileNotificationBell />
-            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-semibold text-base shadow-md">
-              {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
-            </div>
+            <UserAvatar
+              avatarUrl={user?.avatar_url}
+              name={user?.full_name}
+              className="h-11 w-11 border border-white shadow-md"
+            />
           </div>
         </header>
 
@@ -1047,7 +1051,7 @@ export default function HistoryPage() {
         {/* Footer */}
         <footer className="relative z-10 px-4 sm:px-6 lg:px-8 pb-8 pt-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
           <p>© 2024 Timi. All rights reserved.</p>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <button onClick={() => navigate("/privacy")} className="hover:text-slate-600 transition-colors">
               Privacy Policy
             </button>

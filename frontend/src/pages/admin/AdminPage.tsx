@@ -519,7 +519,7 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Quản trị</p>
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -1009,8 +1009,8 @@ function OverviewTab({ transactionsQuery, onViewAll }: { transactionsQuery: Admi
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Risk Distribution (market-share style) */}
         <FalconCard title="Phân bổ rủi ro giao dịch" subtitle="Theo dữ liệu risk engine">
-          <div className="flex items-center gap-6">
-            <div className="flex-1 space-y-3">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <div className="min-w-0 flex-1 space-y-3">
               {liveRiskDistribution.map((item) => (
                 <div key={item.label} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1031,12 +1031,12 @@ function OverviewTab({ transactionsQuery, onViewAll }: { transactionsQuery: Admi
 
         {/* Compliance ring (storage-style) */}
         <FalconCard title="Tuân thủ khuyến nghị AI" subtitle="Giao dịch rủi ro cao đã xử lý đúng khuyến nghị">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
             <DonutChart
               segments={[{ value: compliancePct ?? 0, color: "#2563eb" }]}
               centerLabel={compliancePct != null ? `${compliancePct}%` : "--"}
             />
-            <div className="flex-1 space-y-2">
+            <div className="min-w-0 flex-1 space-y-2">
               <p className="flex items-center gap-1.5 text-sm text-slate-600">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 {(liveStats?.high_risk_cancelled ?? 0).toLocaleString("vi-VN")} đã xử lý đúng khuyến nghị

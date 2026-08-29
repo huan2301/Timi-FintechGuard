@@ -21,6 +21,7 @@ from src.app.agents.task_navigation import is_semantic_product_question
 from src.app.config import get_settings
 from src.app.core.deps import get_current_user
 from src.app.db.session import get_db
+from src.app.models.face_enrollment import FaceEnrollment
 from src.app.models.risk_assessment import RiskSignal, TransactionRiskAssessment, TransactionWarning
 from src.app.models.transaction import Transaction
 from src.app.models.user import User
@@ -54,6 +55,27 @@ from src.app.services.timi_assistant import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+
+
+def _navigation_setup_status(
+    db: Session,
+    *,
+    user: User,
+    face_model_id: str,
+) -> tuple[bool, bool]:
+    """Return only the setup booleans needed by the least-privilege navigator."""
+    face_enrolled = bool(
+        db.scalar(
+            select(FaceEnrollment.id)
+            .where(
+                FaceEnrollment.user_id == user.id,
+                FaceEnrollment.is_active.is_(True),
+                FaceEnrollment.model_id == face_model_id,
+            )
+            .limit(1)
+        )
+    )
+    return face_enrolled, bool(user.transaction_pin_hash)
 
 
 def _mask_risk_coach_account(account: str) -> str:
@@ -222,11 +244,18 @@ def chat_with_timi(
         ChatIntent.GUARDIAN_PREFERENCE,
     }:
         try:
+            face_enrolled, pin_configured = _navigation_setup_status(
+                db,
+                user=current_user,
+                face_model_id=settings.face_embedding_version,
+            )
             navigation_result = get_multi_agent_supervisor().dispatch(
                 AgentId.TASK_NAVIGATOR,
                 TaskNavigationTask(
                     message=payload.message,
                     task_state=current_task_state,
+                    face_enrolled=face_enrolled,
+                    pin_configured=pin_configured,
                 ),
             )
             if not isinstance(navigation_result, TaskNavigationResult):

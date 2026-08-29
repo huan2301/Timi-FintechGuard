@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
   Shield,
   ArrowRight,
@@ -20,8 +21,11 @@ import {
   Play,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import TimiLogo from "@/components/brand/TimiLogo";
+import MobileDrawerFooter from "@/components/layout/MobileDrawerFooter";
 import { useAuthStore } from "@/stores/authStore";
+import { axiosInstance } from "@/services/api/axios";
 
 /* ------------------------------------------------------------------ */
 /*  Nội dung                                                          */
@@ -105,6 +109,10 @@ export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [, setSlide] = useState(0);
   const [activeBanner, setActiveBanner] = useState(0);
+  const managedQuery = useQuery({
+    queryKey: ["public-content", "home"],
+    queryFn: async () => (await axiosInstance.get<Array<{ id: string; title: string | null; body: string | null; image_url: string | null }>>("/v1/content/home")).data,
+  });
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -119,9 +127,10 @@ export default function HomePage() {
   };
 
   const displayName = user?.full_name || user?.email || "Tài khoản";
+  const showSignedInActions = isAuthenticated && user !== null;
 
   return (
-    <div className="min-h-screen bg-white w-full font-[Inter]">
+    <div className="min-h-screen w-full overflow-x-clip bg-white font-[Inter]">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap');
         .font-display { font-family: 'Space Grotesk', sans-serif; }
@@ -129,26 +138,31 @@ export default function HomePage() {
 
       {/* ============================= NAV ============================= */}
       <nav className="sticky top-0 z-50 bg-white border-b border-slate-100 w-full">
-        <div className="w-full px-6 lg:px-12 xl:px-20">
+        <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-20">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center">
-                <TimiLogo className="h-full w-full rounded-xl" />
-              </div>
-              <span className="font-display text-2xl font-bold bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-transparent">Timi</span>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-2"
+                onClick={() => navigate("/")}
+                aria-label="Về trang chủ Timi"
+              >
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center">
+                  <TimiLogo className="h-full w-full rounded-xl" />
+                </div>
+                <span className="font-display text-2xl font-bold bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-transparent">Timi</span>
+              </button>
             </div>
 
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-slate-700 hover:text-[#4F6BFF] font-medium transition-colors">Dịch vụ</a>
-              <Link to="/terms" className="text-slate-700 hover:text-[#4F6BFF] font-medium transition-colors">Điều khoản</Link>
-              {/* <a href="#security" className="text-slate-700 hover:text-[#4F6BFF] font-medium transition-colors">Bảo mật</a> */}
-              <Link to="/privacy" className="text-slate-700 hover:text-[#4F6BFF] font-medium transition-colors">Bảo mật dữ liệu</Link>
-              <Link to="/mission" className="text-slate-700 hover:text-[#4F6BFF] font-medium transition-colors">Sứ mệnh</Link>
-              <a href="#app" className="text-slate-700 hover:text-[#4F6BFF] font-medium transition-colors">Tải app</a>
+            <div className="hidden xl:flex items-center gap-1">
+              <Link to="/" className="rounded-full px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-[#4F6BFF]">Trang chủ</Link>
+              <Link to="/services" className="rounded-full px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-[#4F6BFF]">Dịch vụ</Link>
+              <Link to="/demo" className="rounded-full px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-[#4F6BFF]">Demo AI Anti-Scam</Link>
+              <Link to="/download" className="rounded-full px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-[#4F6BFF]">Tải app</Link>
             </div>
 
-            <div className="hidden md:flex items-center gap-2">
-              {isAuthenticated ? (
+            <div className="hidden xl:flex items-center gap-2">
+              {showSignedInActions ? (
                 <>
                   <button
                     type="button"
@@ -179,42 +193,124 @@ export default function HomePage() {
                 </>
               )}
             </div>
-
-            <button className="md:hidden p-2 text-slate-700" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            <button
+              type="button"
+              aria-label="Mở menu"
+              aria-expanded={mobileMenuOpen}
+              className="-mr-2 rounded-xl p-2 text-slate-700 transition-colors hover:bg-violet-50 hover:text-violet-700 xl:hidden"
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <Menu className="w-6 h-6" />
             </button>
           </div>
         </div>
+      </nav>
 
-        {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t border-slate-100 px-6 py-4 space-y-3">
-            <a href="#features" className="block py-2 text-slate-700 font-medium">Dịch vụ</a>
-            <a href="#security" className="block py-2 text-slate-700 font-medium">Bảo mật</a>
-            <a href="#app" className="block py-2 text-slate-700 font-medium">Tải app</a>
-            <Link to="/mission" className="block py-2 text-slate-700 font-medium">Sứ mệnh</Link>
-            <Link to="/terms" className="block py-2 text-slate-700 font-medium">Điều khoản</Link>
-            <Link to="/privacy" className="block py-2 text-slate-700 font-medium">Bảo mật dữ liệu</Link>
-            <hr className="border-slate-100" />
-            {isAuthenticated ? (
-              <>
-                <button onClick={() => navigate("/dashboard")} className="flex w-full items-center gap-2 py-2 text-left font-semibold text-slate-700">
-                  <UserIcon className="h-4 w-4 text-violet-600" />
+      {mobileMenuOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[70] h-screen max-h-screen overflow-hidden overscroll-contain xl:hidden"
+          style={{ height: "100dvh" }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu điều hướng"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Đóng menu"
+          />
+          <aside className="relative ml-auto flex h-full w-[min(20rem,calc(100vw-3rem))] flex-col overflow-hidden bg-white shadow-2xl shadow-slate-900/20">
+            <div className="flex h-16 items-center justify-between border-b border-slate-100 px-4">
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2">
+                <TimiLogo className="h-8 w-8 rounded-lg" />
+                <span className="font-display bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-lg font-bold text-transparent">Timi</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Đóng menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="flex min-h-full flex-col px-3 py-4">
+            <nav className="space-y-1">
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 rounded-2xl bg-blue-50 px-3 py-3 text-sm font-semibold text-[#4F6BFF]">
+                <Shield className="h-5 w-5" />
+                Trang chủ
+              </Link>
+              <Link to="/services" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                <Zap className="h-5 w-5" />
+                Dịch vụ
+              </Link>
+              <Link to="/demo" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                <Play className="h-5 w-5" />
+                Demo AI Anti-Scam
+              </Link>
+              <Link to="/download" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                <Smartphone className="h-5 w-5" />
+                Tải ứng dụng
+              </Link>
+              {!showSignedInActions && (
+                <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      navigate("/login");
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-800 transition-colors hover:border-violet-300 hover:bg-violet-50"
+                  >
+                    Đăng nhập
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      navigate("/register");
+                    }}
+                    className="w-full rounded-2xl bg-[#4F6BFF] px-3 py-3 text-center text-sm font-bold text-white shadow-sm shadow-blue-200 transition-colors hover:bg-[#3D53E8]"
+                  >
+                    Đăng ký
+                  </button>
+                </div>
+              )}
+            </nav>
+                <MobileDrawerFooter />
+              </div>
+            </div>
+
+            {showSignedInActions && (
+              <div className="shrink-0 border-t border-slate-100 bg-white p-3 shadow-[0_-8px_18px_rgba(15,23,42,0.04)]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    navigate("/dashboard");
+                  }}
+                  className="mb-2 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <UserIcon className="h-5 w-5 text-violet-600" />
                   <span className="truncate">{displayName}</span>
                 </button>
-                <button onClick={() => void handleLogout()} className="flex w-full items-center gap-2 rounded-full py-2.5 text-left font-semibold text-rose-600">
-                  <LogOut className="h-4 w-4" />
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="flex w-full items-center gap-3 rounded-2xl bg-rose-50 px-3 py-3 text-left text-sm font-bold text-rose-600 hover:bg-rose-100"
+                >
+                  <LogOut className="h-5 w-5" />
                   Đăng xuất
                 </button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => navigate("/login")} className="block w-full text-left py-2 text-[#0B0B0B] font-semibold">Đăng nhập</button>
-                <button onClick={() => navigate("/register")} className="w-full py-2.5 bg-[#4F6BFF] text-white font-bold rounded-full">Đăng ký</button>
-              </>
+              </div>
             )}
-          </div>
-        )}
-      </nav>
+          </aside>
+        </div>,
+        document.body,
+      )}
 
       {/* ============================= HERO ============================= */}
       <section className="w-full bg-white">
@@ -287,7 +383,7 @@ export default function HomePage() {
               <p className="text-slate-600 text-lg leading-relaxed max-w-md mb-6">
                 Mỗi tháng, hệ thống AI Anti-Scam của Timi quét hàng triệu giao dịch để giữ an toàn cho tiền của bạn.
               </p>
-              <button className="text-[#4F6BFF] font-bold underline underline-offset-4 hover:text-[#4F6BFF] transition-colors">
+              <button onClick={() => document.getElementById("security")?.scrollIntoView({ behavior: "smooth" })} className="text-[#4F6BFF] font-bold underline underline-offset-4 hover:text-[#4F6BFF] transition-colors">
                 Xem cách chúng tôi bảo vệ bạn
               </button>
             </div>
@@ -442,6 +538,20 @@ export default function HomePage() {
         </div>
       </section>
 
+      {managedQuery.data?.length ? (
+        <section className="bg-white px-6 py-16 lg:px-12 xl:px-20">
+          <div className="mx-auto max-w-6xl">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+              <div><p className="text-sm font-bold uppercase tracking-widest text-violet-600">Từ đội ngũ Timi</p><h2 className="mt-3 text-3xl font-bold text-slate-950">Cập nhật mới nhất</h2></div>
+              <Link to="/services" className="inline-flex items-center gap-2 text-sm font-bold text-blue-600">Xem dịch vụ <ArrowRight className="h-4 w-4" /></Link>
+            </div>
+            <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {managedQuery.data.slice(0, 3).map((item) => <article key={item.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">{item.image_url && <img src={item.image_url} alt={item.title || "Nội dung Timi"} className="h-40 w-full object-contain" />}<div className="p-5"><h3 className="font-bold text-slate-900">{item.title || "Thông tin từ Timi"}</h3><p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-500">{item.body}</p></div></article>)}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* ===================== FEATURES lưới nhỏ (giữ) ===================== */}
       <section id="features" className="py-20 bg-white w-full">
         <div className="w-full px-6 lg:px-12 xl:px-20">
@@ -468,7 +578,7 @@ export default function HomePage() {
 
         <div className="relative w-full px-6 lg:px-12 xl:px-20">
           <div className="bg-white rounded-[2.5rem] shadow-2xl px-8 py-16 max-w-2xl mx-auto text-center">
-            <div className="flex items-center justify-center gap-4 mb-6 text-sm text-slate-500">
+            <div className="mb-6 flex flex-col items-center justify-center gap-2 text-sm text-slate-500 sm:flex-row sm:gap-4">
               <span className="flex items-center gap-1"><Star className="w-4 h-4 fill-[#4F6BFF] text-[#4F6BFF]" /> 4.8 trên App Store</span>
               <span className="flex items-center gap-1"><Star className="w-4 h-4 fill-[#4F6BFF] text-[#4F6BFF]" /> 4.8 trên Google Play</span>
             </div>
@@ -486,13 +596,13 @@ export default function HomePage() {
               </div>
               <p className="text-sm text-slate-500">Quét mã để tải Timi</p>
 
-              <div className="flex gap-3">
-                <button className="px-6 py-3 bg-[#0B0B0B] text-white rounded-xl font-semibold flex items-center gap-2 hover:bg-slate-800 transition-colors">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link to="/download" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0B0B0B] px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-800 sm:w-auto">
                   <Smartphone className="w-5 h-5" /> App Store
-                </button>
-                <button className="px-6 py-3 bg-[#0B0B0B] text-white rounded-xl font-semibold flex items-center gap-2 hover:bg-slate-800 transition-colors">
+                </Link>
+                <Link to="/download" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0B0B0B] px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-800 sm:w-auto">
                   <Smartphone className="w-5 h-5" /> Google Play
-                </button>
+                </Link>
               </div>
             </div>
           </div>
@@ -512,9 +622,9 @@ export default function HomePage() {
           <div className="relative max-w-3xl mx-auto rounded-[2rem] overflow-hidden group cursor-pointer">
             {/* Thay src bên dưới bằng video thật của bạn; ảnh nền chỉ là placeholder trang trí */}
             <div className="aspect-video bg-gradient-to-br from-[#3D5AFB] to-[#6C4CE0] flex items-center justify-center">
-              <button className="w-20 h-20 rounded-full bg-white flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Link to="/demo" aria-label="Xem demo Timi Guard" className="flex h-20 w-20 items-center justify-center rounded-full bg-white transition-transform group-hover:scale-110">
                 <Play className="w-8 h-8 text-[#4F6BFF] ml-1" fill="currentColor" />
-              </button>
+              </Link>
             </div>
             {/* <video className="absolute inset-0 w-full h-full object-cover" controls poster="/assets/video-poster.jpg" src="/assets/timi-demo.mp4" /> */}
           </div>
@@ -542,40 +652,49 @@ export default function HomePage() {
       </section>
 
       {/* ===================== FOOTER ===================== */}
-      <footer className="bg-[#0B0B0B] text-slate-400 py-12 w-full">
-        <div className="w-full px-6 lg:px-12 xl:px-20">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div className="col-span-2">
+      <footer className="w-full overflow-hidden bg-[#0B0B0B] py-8 text-slate-400 sm:py-12">
+        <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-20">
+          <div className="mb-6 grid grid-cols-2 gap-x-5 gap-y-6 sm:gap-8 md:mb-8 md:grid-cols-5">
+            <div className="col-span-2 min-w-0 md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center">
                   <TimiLogo className="h-full w-full rounded-xl" />
                 </div>
                 <span className="font-display text-2xl font-bold bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-transparent">Timi</span>
               </div>
-              <p className="text-sm leading-relaxed max-w-sm">
+              <p className="max-w-sm text-xs leading-5 sm:text-sm sm:leading-relaxed">
                 Ví điện tử thông minh được bảo vệ bởi AI. Sứ mệnh của chúng tôi là giúp mọi giao dịch của bạn đều an toàn tuyệt đối.
               </p>
             </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4">Dịch vụ</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-[#4F6BFF] transition-colors">Chuyển tiền</a></li>
-                <li><a href="#" className="hover:text-[#4F6BFF] transition-colors">Thanh toán hóa đơn</a></li>
-                <li><a href="#" className="hover:text-[#4F6BFF] transition-colors">Nạp điện thoại</a></li>
-                <li><a href="#" className="hover:text-[#4F6BFF] transition-colors">Quản lý chi tiêu</a></li>
+            <div className="min-w-0">
+              <h4 className="mb-3 text-sm font-semibold text-white sm:mb-4">Dịch vụ</h4>
+              <ul className="space-y-1.5 text-xs leading-5 sm:space-y-2 sm:text-sm">
+                <li><Link to="/services#transfer" className="hover:text-[#4F6BFF] transition-colors">Chuyển tiền</Link></li>
+                <li><Link to="/services#bill-payment" className="hover:text-[#4F6BFF] transition-colors">Thanh toán hóa đơn</Link></li>
+                <li><Link to="/services#mobile-topup" className="hover:text-[#4F6BFF] transition-colors">Nạp điện thoại</Link></li>
+                <li><Link to="/services#spending" className="hover:text-[#4F6BFF] transition-colors">Quản lý chi tiêu</Link></li>
               </ul>
             </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4">Hỗ trợ</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-[#4F6BFF] transition-colors">Trung tâm trợ giúp</a></li>
+            <div className="min-w-0">
+              <h4 className="mb-3 text-sm font-semibold text-white sm:mb-4">Khám phá</h4>
+              <ul className="space-y-1.5 text-xs leading-5 sm:space-y-2 sm:text-sm">
+                <li><Link to="/demo" className="hover:text-[#4F6BFF] transition-colors">Demo AI Anti-Scam</Link></li>
+                <li><Link to="/mission" className="hover:text-[#4F6BFF] transition-colors">Sứ mệnh Timi</Link></li>
+                <li><Link to="/download" className="hover:text-[#4F6BFF] transition-colors">Tải ứng dụng</Link></li>
+              </ul>
+            </div>
+            <div className="col-span-2 min-w-0 md:col-span-1">
+              <h4 className="mb-3 text-sm font-semibold text-white sm:mb-4">Hỗ trợ</h4>
+              <ul className="space-y-1.5 text-xs leading-5 sm:space-y-2 sm:text-sm">
+                <li><Link to="/help" className="hover:text-[#4F6BFF] transition-colors">Trung tâm trợ giúp</Link></li>
                 <li><Link to="/privacy" className="hover:text-[#4F6BFF] transition-colors">Chính sách bảo mật</Link></li>
                 <li><Link to="/terms" className="hover:text-[#4F6BFF] transition-colors">Điều khoản sử dụng</Link></li>
                 <li><Link to="/help" className="hover:text-[#4F6BFF] transition-colors">Trợ giúp - liên hệ</Link></li>
+                <li><Link to="/cookies" className="hover:text-[#4F6BFF] transition-colors">Chính sách Cookie</Link></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-slate-800 pt-8 text-sm text-center">
+          <div className="border-t border-slate-800 pt-5 text-center text-xs sm:pt-8 sm:text-sm">
             © 2026 Timi. Tất cả quyền được bảo lưu.
           </div>
         </div>

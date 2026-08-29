@@ -45,10 +45,13 @@ Tạo `frontend/.env.local` nếu backend không nằm ở mặc định:
 
 ```env
 VITE_API_URL=http://localhost:8000/api
+# Tuỳ chọn: chỉ dùng khi muốn ép QR về một custom domain public cố định.
+VITE_PUBLIC_WEB_URL=https://<frontend-service>.onrender.com
 ```
 
 - Không commit file `.env.local` / secret.
 - `VITE_API_URL` phải kết thúc bằng `/api` (không có slash thừa sau nếu backend đã mount `/api`).
+- `VITE_PUBLIC_WEB_URL` là origin HTTPS public cố định của frontend, dùng cho link trong QR nhận tiền; khi không đặt, QR tự dùng origin đang mở (local → local, deploy → deploy).
 - CORS phía backend (`CORS_ORIGINS`) phải chứa đúng origin frontend (ví dụ `http://localhost:5173`, không slash cuối).
 
 ### Scripts
@@ -133,6 +136,7 @@ npm run build
 
 - Publish directory: `dist`
 - Build-time env: `VITE_API_URL=https://<backend-host>/api`
+- Tuỳ chọn build-time env: `VITE_PUBLIC_WEB_URL=https://<frontend-service>.onrender.com` nếu QR phải luôn trỏ về một custom domain
 - Sau khi có URL frontend thật: cập nhật `CORS_ORIGINS` phía backend rồi redeploy API
 
 Docker: dùng `frontend/Dockerfile` trong compose production (Nginx serve static + proxy `/api` nếu cấu hình).

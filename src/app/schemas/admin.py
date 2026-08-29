@@ -154,7 +154,7 @@ class UserStatusUpdate(BaseModel):
 
 
 class ContentItemCreate(BaseModel):
-    page_key: Literal["home", "dashboard", "privacy", "mission", "terms", "services", "help"]
+    page_key: Literal["home", "dashboard", "privacy", "mission", "terms", "services", "help", "cookies", "download", "demo"]
     content_type: Literal["article", "review", "image"]
     title: str | None = Field(default=None, max_length=255)
     body: str | None = Field(default=None, max_length=20_000)

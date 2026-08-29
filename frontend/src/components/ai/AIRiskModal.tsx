@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { AssessResponse } from "@/services/api/transactions";
 import TimiChibi from "@/components/ai/TimiChibi";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 export type RiskAssessment = AssessResponse;
 
@@ -34,6 +35,7 @@ export default function AIRiskModal({
   isLoading,
   requiresFaceVerification = false,
 }: AIRiskModalProps) {
+  useBodyScrollLock(true, "ai-risk-modal");
   const warning = riskData.warning;
   const [verified, setVerified] = useState(false);
   const [pin, setPin] = useState("");
@@ -115,7 +117,7 @@ export default function AIRiskModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex h-dvh max-h-dvh min-h-0 touch-pan-y items-start justify-center overflow-y-auto overscroll-contain bg-slate-950/50 p-3 backdrop-blur-[3px] sm:items-center sm:p-6"
+      className="fixed inset-0 z-[9999] flex h-dvh max-h-dvh min-h-0 touch-pan-y items-start justify-center overflow-hidden overscroll-contain bg-slate-950/50 p-3 backdrop-blur-[3px] sm:items-center sm:p-6"
       role="presentation"
     >
       <div
@@ -142,7 +144,7 @@ export default function AIRiskModal({
           </p>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-2.5 overflow-hidden px-5 py-4 sm:px-7">
+        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-5 py-4 sm:px-7">
           <div className={`flex items-center gap-3 rounded-2xl border p-3 shadow-sm ${riskTone.banner}`}>
             <div className="shrink-0">
               <TimiChibi compact warning walking />
@@ -229,7 +231,7 @@ export default function AIRiskModal({
           )}
         </div>
 
-        <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:px-7">
+        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:gap-3 sm:px-7">
           <button
             type="button"
             onClick={handleCancel}

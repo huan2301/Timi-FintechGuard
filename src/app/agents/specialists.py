@@ -11,7 +11,11 @@ from src.app.agents.contracts import (
     AgentId,
     ChatIntent,
 )
-from src.app.agents.task_navigation import navigation_action_for_route, route_task
+from src.app.agents.task_navigation import (
+    block_completed_setup_navigation,
+    navigation_action_for_route,
+    route_task,
+)
 from src.app.services.contextual_navigation_agent import understand_navigation_request
 from src.app.services.scam_guardian_agent import analyze_with_guardian_agent
 from src.app.services.scam_guardian_stt import transcribe_guardian_audio
@@ -63,6 +67,8 @@ class ChatSupportResult:
 class TaskNavigationTask:
     message: str
     task_state: AssistantTaskState
+    face_enrolled: bool = False
+    pin_configured: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +169,11 @@ class TaskNavigationAgent:
                     )
                     or decision
                 )
+        decision = block_completed_setup_navigation(
+            decision,
+            face_enrolled=payload.face_enrolled,
+            pin_configured=payload.pin_configured,
+        )
         return TaskNavigationResult(
             handled=decision.handled,
             answer=decision.answer,

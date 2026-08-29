@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Phone, ShieldCheck, X } from "lucide-react";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 export default function GooglePhoneModal({
   email,
@@ -14,6 +15,7 @@ export default function GooglePhoneModal({
   onCancel: () => void;
   onSubmit: (phone: string) => Promise<void>;
 }) {
+  useBodyScrollLock(true, "google-phone-modal");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
 

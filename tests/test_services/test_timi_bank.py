@@ -196,3 +196,31 @@ def test_admin_timi_account_cannot_be_resolved_as_a_recipient(monkeypatch: pytes
             account_number="0900000002",
             bank_code=TIMI_BANK_CODE,
         )
+
+
+def test_recipient_lookup_marks_an_exact_blacklist_match_as_caution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = SimpleNamespace(
+        id=uuid4(),
+        full_name="Nguyen Viet Quang",
+        role=UserRole.USER.value,
+    )
+    monkeypatch.setattr(
+        "src.app.services.recipient_lookup.find_active_timi_recipient",
+        lambda _db, _account_number: recipient,
+    )
+    monkeypatch.setattr(
+        "src.app.services.recipient_lookup._active_account_blacklist_entry",
+        lambda _db, **_kwargs: SimpleNamespace(),
+    )
+
+    result = lookup_recipient(
+        object(),
+        user_id=uuid4(),
+        account_number="0900000003",
+        bank_code=TIMI_BANK_CODE,
+    )
+
+    assert result.account_name == "Nguyen Viet Quang"
+    assert result.needs_caution is True

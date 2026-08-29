@@ -28,7 +28,7 @@ export default function TransactionAnalysisScreen() {
   }, []);
 
   return (
-    <div className="min-h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-4 py-8">
+    <div className="min-h-screen w-full overflow-x-clip bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-4 py-8">
       <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-lg items-center justify-center">
         <div className="relative w-full overflow-hidden rounded-[2rem] border border-white/90 bg-white/90 p-6 text-center shadow-xl shadow-blue-100 backdrop-blur sm:p-8">
           <div className="absolute -left-8 -top-8 h-32 w-32 rounded-full bg-blue-200/40 blur-2xl" />

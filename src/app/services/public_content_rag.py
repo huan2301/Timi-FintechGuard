@@ -27,14 +27,17 @@ from src.app.models.content_item import ContentItem
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PAGE_KEYS = frozenset({"home", "privacy", "mission", "terms", "services", "help"})
+PUBLIC_PAGE_KEYS = frozenset({"home", "privacy", "mission", "terms", "services", "help", "cookies", "download", "demo"})
 PAGE_ROUTES = {
     "home": "/",
     "privacy": "/privacy",
     "mission": "/mission",
     "terms": "/terms",
-    "services": "/dashboard",
+    "services": "/services",
     "help": "/help",
+    "cookies": "/cookies",
+    "download": "/download",
+    "demo": "/demo",
 }
 _TAG_PATTERN = re.compile(r"<[^>]+>")
 _WORD_PATTERN = re.compile(r"\w+", re.UNICODE)

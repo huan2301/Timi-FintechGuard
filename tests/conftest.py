@@ -1,4 +1,9 @@
+import os
 from unittest.mock import AsyncMock
+
+# Tests must never start a LangSmith tracing client from local .env values.
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGSMITH_TRACING"] = "false"
 
 import pytest
 import pytest_asyncio

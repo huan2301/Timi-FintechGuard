@@ -79,6 +79,10 @@ class AssistantUiAction(BaseModel):
         "/privacy",
         "/mission",
         "/help",
+        "/services",
+        "/download",
+        "/demo",
+        "/cookies",
     ] | None = None
 
 

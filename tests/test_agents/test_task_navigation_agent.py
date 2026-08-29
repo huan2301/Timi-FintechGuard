@@ -177,6 +177,34 @@ def test_task_agent_gives_a_specific_next_step_for_avatar_change() -> None:
     )
 
 
+def test_task_agent_does_not_reopen_completed_face_enrollment() -> None:
+    result = TaskNavigationAgent().execute(
+        TaskNavigationTask(
+            message="Tôi muốn cài đặt Face ID",
+            task_state=AssistantTaskState(),
+            face_enrolled=True,
+        )
+    )
+
+    assert result.handled
+    assert result.action is None
+    assert "đã được thiết lập" in (result.answer or "")
+
+
+def test_task_agent_routes_completed_pin_setup_to_pin_update() -> None:
+    result = TaskNavigationAgent().execute(
+        TaskNavigationTask(
+            message="Tôi muốn tạo mã PIN mới",
+            task_state=AssistantTaskState(),
+            pin_configured=True,
+        )
+    )
+
+    assert result.handled
+    assert result.action is not None
+    assert result.action.route == "/me?open=pin"
+
+
 @pytest.mark.parametrize(
     ("message", "expected_next_step"),
     [

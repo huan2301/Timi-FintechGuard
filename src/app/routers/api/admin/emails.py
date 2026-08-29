@@ -12,19 +12,20 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.app.core.deps import require_admin, get_current_user
+from src.app.core.deps import get_current_user, require_admin
 from src.app.db.session import get_db
-from src.app.models.user import User
 from src.app.models.newsletter_subscriber import NewsletterSubscriber
+from src.app.models.notification import Notification
+from src.app.models.user import User
 from src.app.services.audit import add_audit_log
-from src.app.services.email_service import send_email, send_batch_emails, wrap_broadcast_html
+from src.app.services.email_service import send_batch_emails, send_email, wrap_broadcast_html
 
 logger = logging.getLogger(__name__)
 
@@ -117,53 +118,26 @@ def _create_notifications_for_all(
 ) -> int:
     """
     Tạo notification cho mọi user.
-    Ưu tiên model Notification nếu có; fallback: bảng đơn giản qua raw SQLAlchemy model.
     """
-    try:
-        from src.app.models.notification import Notification  # type: ignore
-    except ImportError:
-        Notification = None  # type: ignore
-
     user_ids = _all_user_ids(db)
     if not user_ids:
         return 0
 
-    if Notification is not None:
-        rows = [
-            Notification(
-                id=uuid.uuid4(),
-                user_id=uid,
-                title=title,
-                body=body,
-                kind="product_update",
-                version=version,
-                is_read=False,
-                created_at=datetime.now(timezone.utc),
-            )
-            for uid in user_ids
-        ]
-        db.add_all(rows)
-        return len(rows)
-
-    # Fallback: lưu metadata vào audit (tạm) — nên tạo model Notification
-    add_audit_log(
-        db,
-        action="notification.product_update_broadcast",
-        actor_id=actor_id,
-        resource_type="product_update",
-        resource_id=None,
-        metadata={
-            "title": title,
-            "body": body,
-            "version": version,
-            "recipient_count": len(user_ids),
-            "note": "No Notification model — create src.app.models.notification",
-        },
-    )
-    logger.warning(
-        "Notification model missing — product update only audited, not pushed to users"
-    )
-    return 0
+    rows = [
+        Notification(
+            id=uuid.uuid4(),
+            user_id=uid,
+            title=title,
+            body=body,
+            kind="product_update",
+            version=version,
+            is_read=False,
+            created_at=datetime.now(UTC),
+        )
+        for uid in user_ids
+    ]
+    db.add_all(rows)
+    return len(rows)
 
 
 @router.post("/broadcast", response_model=BroadcastResult)
@@ -297,6 +271,8 @@ def publish_product_update(
 
 
 class NotificationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     title: str
     body: str
@@ -305,21 +281,12 @@ class NotificationOut(BaseModel):
     is_read: bool
     created_at: str
 
-    class Config:
-        from_attributes = True
-
-
 @notifications_router.get("", response_model=list[NotificationOut])
 def list_my_notifications(
     limit: int = 30,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    try:
-        from src.app.models.notification import Notification
-    except ImportError:
-        return []
-
     rows = list(
         db.scalars(
             select(Notification)
@@ -347,21 +314,15 @@ def unread_count(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    try:
-        from src.app.models.notification import Notification
-        from sqlalchemy import func
-
-        n = db.scalar(
-            select(func.count())
-            .select_from(Notification)
-            .where(
-                Notification.user_id == user.id,
-                Notification.is_read.is_(False),
-            )
+    n = db.scalar(
+        select(func.count())
+        .select_from(Notification)
+        .where(
+            Notification.user_id == user.id,
+            Notification.is_read.is_(False),
         )
-        return {"count": int(n or 0)}
-    except ImportError:
-        return {"count": 0}
+    )
+    return {"count": int(n or 0)}
 
 
 @notifications_router.post("/{notification_id}/read")
@@ -370,11 +331,6 @@ def mark_read(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    try:
-        from src.app.models.notification import Notification
-    except ImportError:
-        raise HTTPException(404, "Notification model chưa có")
-
     row = db.get(Notification, notification_id)
     if row is None or row.user_id != user.id:
         raise HTTPException(404, "Không tìm thấy thông báo")
@@ -388,11 +344,6 @@ def mark_all_read(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    try:
-        from src.app.models.notification import Notification
-    except ImportError:
-        return {"ok": True, "updated": 0}
-
     rows = list(
         db.scalars(
             select(Notification).where(
