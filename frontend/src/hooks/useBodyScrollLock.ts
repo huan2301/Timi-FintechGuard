@@ -1,25 +1,30 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect } from "react";
 
-/** Lock the document before paint without changing the user's current viewport position. */
-export function useBodyScrollLock(locked: boolean, lockKey = "default") {
-  const currentLockKey = useRef(lockKey);
-  const previousLockKey = useRef(lockKey);
-  currentLockKey.current = lockKey;
+type ScrollSnapshot = {
+  scrollX: number;
+  scrollY: number;
+  htmlOverflow: string;
+  bodyPosition: string;
+  bodyTop: string;
+  bodyLeft: string;
+  bodyWidth: string;
+  bodyOverflow: string;
+};
 
-  useLayoutEffect(() => {
-    if (!locked) return;
+// Scroll locking is global because every modal is rendered in a portal. A
+// counter prevents one modal from undoing the lock while another modal is
+// still open (for example, a risk dialog followed by its PIN dialog).
+let activeLocks = 0;
+let snapshot: ScrollSnapshot | null = null;
 
-    const routeChanged = previousLockKey.current !== lockKey;
-    previousLockKey.current = lockKey;
-    if (routeChanged) {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    }
-
+function acquireScrollLock() {
+  if (activeLocks === 0) {
     const html = document.documentElement;
     const body = document.body;
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    const previous = {
+
+    snapshot = {
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
       htmlOverflow: html.style.overflow,
       bodyPosition: body.style.position,
       bodyTop: body.style.top,
@@ -30,21 +35,45 @@ export function useBodyScrollLock(locked: boolean, lockKey = "default") {
 
     html.style.overflow = "hidden";
     body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.left = `-${scrollX}px`;
+    body.style.top = `-${snapshot.scrollY}px`;
+    body.style.left = `-${snapshot.scrollX}px`;
     body.style.width = "100%";
     body.style.overflow = "hidden";
+  }
 
-    return () => {
-      html.style.overflow = previous.htmlOverflow;
-      body.style.position = previous.bodyPosition;
-      body.style.top = previous.bodyTop;
-      body.style.left = previous.bodyLeft;
-      body.style.width = previous.bodyWidth;
-      body.style.overflow = previous.bodyOverflow;
-      if (currentLockKey.current === lockKey) {
-        window.scrollTo({ top: scrollY, left: scrollX, behavior: "auto" });
-      }
-    };
-  }, [locked, lockKey]);
+  activeLocks += 1;
+  let released = false;
+
+  return () => {
+    if (released) return;
+    released = true;
+    activeLocks = Math.max(0, activeLocks - 1);
+
+    // Keep the page locked until every modal/overlay has released its lock.
+    if (activeLocks > 0 || !snapshot) return;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const previous = snapshot;
+    snapshot = null;
+
+    html.style.overflow = previous.htmlOverflow;
+    body.style.position = previous.bodyPosition;
+    body.style.top = previous.bodyTop;
+    body.style.left = previous.bodyLeft;
+    body.style.width = previous.bodyWidth;
+    body.style.overflow = previous.bodyOverflow;
+    window.scrollTo({ top: previous.scrollY, left: previous.scrollX, behavior: "auto" });
+  };
+}
+
+/** Lock document scrolling while a modal is open without losing the viewport position. */
+export function useBodyScrollLock(locked: boolean, _lockKey = "default") {
+  // Keep the second argument for existing callers; route changes are handled
+  // by the router rather than by resetting the scroll position here.
+  void _lockKey;
+  useLayoutEffect(() => {
+    if (!locked) return undefined;
+    return acquireScrollLock();
+  }, [locked]);
 }

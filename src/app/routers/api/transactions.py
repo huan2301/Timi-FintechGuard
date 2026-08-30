@@ -32,6 +32,7 @@ from src.app.models.risk_assessment import (
     WarningDecision,
     WarningFeedback,
 )
+from src.app.models.saved_recipient import SavedRecipient
 from src.app.models.scam_guardian import ScamGuardianSession
 from src.app.models.scam_report import ScamReport
 from src.app.models.transaction import Transaction, TransactionEnvironment, TransactionStatus
@@ -45,6 +46,8 @@ from src.app.schemas.risk import (
     InterventionOut,
     InterventionRequest,
     RiskSignalOut,
+    SavedRecipientCreate,
+    SavedRecipientOut,
     TransactionHistoryPage,
     TransactionHistorySummary,
     TrustedRecipientCreate,
@@ -85,6 +88,39 @@ def _utcnow() -> datetime:
 def _request_peer_ip(request: Request) -> str | None:
     """Return only the direct ASGI peer; forwarded headers are not trusted."""
     return request.client.host if request.client is not None else None
+
+
+def _saved_recipient_outputs(
+    db: Session, recipients: list[SavedRecipient]
+) -> list[SavedRecipientOut]:
+    """Attach the current avatar for saved Timi recipients in one query."""
+    timi_accounts = {
+        recipient.account_number
+        for recipient in recipients
+        if is_timi_bank(recipient.bank_code)
+    }
+    avatar_by_account = {
+        phone: avatar_url
+        for phone, avatar_url in db.execute(
+            select(User.phone, User.avatar_url).where(
+                User.phone.in_(timi_accounts),
+                User.is_active.is_(True),
+                User.timi_bank_enabled.is_(True),
+            )
+        ).all()
+        if phone
+    } if timi_accounts else {}
+    return [
+        SavedRecipientOut(
+            id=recipient.id,
+            recipient_name=recipient.recipient_name,
+            account_number=recipient.account_number,
+            bank_code=recipient.bank_code,
+            saved_at=recipient.saved_at,
+            avatar_url=avatar_by_account.get(recipient.account_number),
+        )
+        for recipient in recipients
+    ]
 
 
 def _sync_completed_recipient(db: Session, transaction: Transaction) -> None:
@@ -1016,6 +1052,29 @@ def recent_contacts(
     return contacts
 
 
+@router.get("/saved-recipients", response_model=list[SavedRecipientOut])
+def saved_recipients(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[SavedRecipientOut]:
+    """Return only the current user's saved transfer addresses.
+
+    This is an address book, not a security allow-list. The frontend still
+    performs a recipient lookup and risk assessment after selection.
+    """
+    page_size = min(max(limit, 1), 50)
+    recipients = list(
+        db.scalars(
+            select(SavedRecipient)
+            .where(SavedRecipient.user_id == current_user.id)
+            .order_by(desc(SavedRecipient.saved_at), desc(SavedRecipient.id))
+            .limit(page_size)
+        ).all()
+    )
+    return _saved_recipient_outputs(db, recipients)
+
+
 @router.get("/history", response_model=TransactionHistoryPage)
 def history(
     limit: int = _HISTORY_DEFAULT_PAGE_SIZE,
@@ -1131,6 +1190,96 @@ def mark_trusted_recipient(
     )
     db.commit()
     return {"status": "trusted", "recipient_id": str(recipient.id)}
+
+
+@router.post("/saved-recipients", response_model=SavedRecipientOut, status_code=status.HTTP_201_CREATED)
+def save_recipient(
+    payload: SavedRecipientCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SavedRecipientOut:
+    """Save a recipient that has just been resolved by the server.
+
+    The signed lookup token prevents a browser from saving a made-up name or
+    from marking an arbitrary account as safe. Saving has no effect on risk
+    scoring; it only powers the personal recipient picker.
+    """
+    account_number = payload.account_number.replace(" ", "").strip()
+    bank_code = normalize_bank_name(payload.bank_code)
+    if not bank_code:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Ngân hàng không hợp lệ",
+        )
+    try:
+        verified = decode_recipient_lookup_token(
+            payload.recipient_lookup_token, user_id=str(current_user.id)
+        )
+    except (JWTError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Thông tin người nhận chưa được xác thực hoặc đã hết hạn. Vui lòng tra cứu lại.",
+        ) from None
+    if verified["account_number"] != account_number or verified["bank_code"] != bank_code:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Thông tin người nhận đã thay đổi. Vui lòng tra cứu lại.",
+        )
+
+    recipient = db.scalar(
+        select(SavedRecipient).where(
+            SavedRecipient.user_id == current_user.id,
+            SavedRecipient.account_number == account_number,
+            SavedRecipient.bank_code == bank_code,
+        )
+    )
+    if recipient is not None:
+        return _saved_recipient_outputs(db, [recipient])[0]
+
+    recipient = SavedRecipient(
+        user_id=current_user.id,
+        account_number=account_number,
+        recipient_name=verified["account_name"],
+        bank_code=bank_code,
+        saved_at=_utcnow(),
+    )
+    db.add(recipient)
+    db.flush()
+    add_audit_log(
+        db,
+        action="saved_recipient.created",
+        actor_id=current_user.id,
+        resource_type="saved_recipient",
+        resource_id=recipient.id,
+    )
+    db.commit()
+    db.refresh(recipient)
+    return _saved_recipient_outputs(db, [recipient])[0]
+
+
+@router.delete("/saved-recipients/{recipient_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_saved_recipient(
+    recipient_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    recipient = db.scalar(
+        select(SavedRecipient).where(
+            SavedRecipient.id == recipient_id,
+            SavedRecipient.user_id == current_user.id,
+        )
+    )
+    if recipient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người nhận đã lưu")
+    db.delete(recipient)
+    add_audit_log(
+        db,
+        action="saved_recipient.deleted",
+        actor_id=current_user.id,
+        resource_type="saved_recipient",
+        resource_id=recipient_id,
+    )
+    db.commit()
 
 
 @router.post("/warnings/{warning_id}/feedback", status_code=status.HTTP_201_CREATED)

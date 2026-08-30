@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, MessageCircle, Mic, MicOff, Minimize2, Send, Shield, ShieldAlert, Sparkles, Trash2, X, Zap } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -44,6 +44,159 @@ type AssistantApiError = {
     data?: { detail?: unknown };
   };
 };
+
+const INLINE_MARKDOWN_PATTERN = /(\*\*(.+?)\*\*|__([^_]+)__|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\*([^*]+)\*)/g;
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const children: ReactNode[] = [];
+  let cursor = 0;
+  let tokenIndex = 0;
+
+  for (const match of value.matchAll(INLINE_MARKDOWN_PATTERN)) {
+    const index = match.index ?? cursor;
+    if (index > cursor) children.push(value.slice(cursor, index));
+
+    const key = `${index}-${tokenIndex++}`;
+    if (match[2] || match[3]) {
+      children.push(
+        <strong key={key} className="font-bold text-slate-900">
+          {match[2] ?? match[3]}
+        </strong>,
+      );
+    } else if (match[4]) {
+      children.push(
+        <code key={key} className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-indigo-700">
+          {match[4]}
+        </code>,
+      );
+    } else if (match[5] && match[6]) {
+      children.push(
+        <a
+          key={key}
+          href={match[6]}
+          target="_blank"
+          rel="noreferrer"
+          className="font-semibold text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-800"
+        >
+          {match[5]}
+        </a>,
+      );
+    } else if (match[7]) {
+      children.push(
+        <em key={key} className="italic text-slate-800">
+          {match[7]}
+        </em>,
+      );
+    } else {
+      children.push(match[0]);
+    }
+    cursor = index + match[0].length;
+  }
+
+  if (cursor < value.length) children.push(value.slice(cursor));
+  return children;
+}
+
+function renderInlineLines(lines: string[]): ReactNode[] {
+  return lines.flatMap((line, index) => [
+    ...(index > 0 ? [<br key={`break-${index}`} />] : []),
+    ...renderInlineMarkdown(line),
+  ]);
+}
+
+function AssistantRichText({ content }: { content: string }) {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let unordered: string[] = [];
+  let ordered: string[] = [];
+
+  const flush = () => {
+    if (paragraph.length) {
+      blocks.push(
+        <p key={`paragraph-${blocks.length}`} className="whitespace-normal">
+          {renderInlineLines(paragraph)}
+        </p>,
+      );
+      paragraph = [];
+    }
+    if (unordered.length) {
+      blocks.push(
+        <ul key={`unordered-${blocks.length}`} className="list-disc space-y-1 pl-5 marker:text-indigo-400">
+          {unordered.map((item, index) => (
+            <li key={`unordered-item-${index}`}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ul>,
+      );
+      unordered = [];
+    }
+    if (ordered.length) {
+      blocks.push(
+        <ol key={`ordered-${blocks.length}`} className="list-decimal space-y-1 pl-5 marker:font-semibold marker:text-indigo-500">
+          {ordered.map((item, index) => (
+            <li key={`ordered-item-${index}`}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ol>,
+      );
+      ordered = [];
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flush();
+      continue;
+    }
+
+    const heading = trimmed.match(/^#{1,3}\s+(.+)$/);
+    if (heading) {
+      flush();
+      blocks.push(
+        <h4 key={`heading-${blocks.length}`} className="pt-1 text-[13px] font-extrabold text-slate-900">
+          {renderInlineMarkdown(heading[1])}
+        </h4>,
+      );
+      continue;
+    }
+
+    if (/^([-*_])(?:\s*\1){2,}$/.test(trimmed)) {
+      flush();
+      blocks.push(<hr key={`rule-${blocks.length}`} className="border-slate-100" />);
+      continue;
+    }
+
+    const bullet = trimmed.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      if (ordered.length) flush();
+      unordered.push(bullet[1]);
+      continue;
+    }
+
+    const numbered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (numbered) {
+      if (unordered.length) flush();
+      ordered.push(numbered[1]);
+      continue;
+    }
+
+    const quote = trimmed.match(/^>\s?(.*)$/);
+    if (quote) {
+      flush();
+      blocks.push(
+        <blockquote key={`quote-${blocks.length}`} className="rounded-xl border-l-2 border-indigo-300 bg-indigo-50/70 px-3 py-2 text-indigo-900">
+          {renderInlineMarkdown(quote[1])}
+        </blockquote>,
+      );
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+  flush();
+
+  return <div className="space-y-2.5">{blocks}</div>;
+}
 
 function assistantErrorMessage(error: unknown): string {
   const apiError = error as AssistantApiError;
@@ -666,13 +819,17 @@ export default function MiniTimiAssistant() {
                     </div>
                   </div>
                 )}
-                <p className={`max-w-[80%] break-words whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
+                <div className={`max-w-[86%] break-words rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
                   chatMessage.role === "user"
-                    ? "rounded-br-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+                    ? "whitespace-pre-wrap rounded-br-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
                     : "rounded-bl-md border border-slate-100 bg-white text-slate-700"
                 }`}>
-                  {chatMessage.content}
-                </p>
+                  {chatMessage.role === "assistant" ? (
+                    <AssistantRichText content={chatMessage.content} />
+                  ) : (
+                    chatMessage.content
+                  )}
+                </div>
               </div>
             ))}
             {riskContext && !riskCoachMutation.isPending && riskCoachQuestions.length > 0 && (

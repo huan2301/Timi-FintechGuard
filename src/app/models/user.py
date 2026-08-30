@@ -11,6 +11,7 @@ from src.app.db.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from src.app.models.compliance import UserConsent
     from src.app.models.risk_assessment import WarningFeedback
+    from src.app.models.saved_recipient import SavedRecipient
     from src.app.models.scam_report import ScamReport
     from src.app.models.timi_ledger_entry import TimiLedgerEntry
     from src.app.models.transaction import Transaction
@@ -74,6 +75,7 @@ class User(Base, TimestampMixin):
         back_populates="user"
     )
     trusted_recipients: Mapped[list["TrustedRecipient"]] = relationship(back_populates="user")
+    saved_recipients: Mapped[list["SavedRecipient"]] = relationship(back_populates="user")
     consents: Mapped[list["UserConsent"]] = relationship(back_populates="user")
     warning_feedback: Mapped[list["WarningFeedback"]] = relationship(
         back_populates="user", foreign_keys="WarningFeedback.user_id"

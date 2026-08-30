@@ -25,6 +25,7 @@ from src.app.models.risk_assessment import (
     WarningDecision,
     WarningFeedback,
 )
+from src.app.models.saved_recipient import SavedRecipient
 from src.app.models.scam_guardian import (
     ScamAlert,
     ScamConversationSegment,
@@ -64,6 +65,7 @@ __all__ = [
     "RecipientDirectory",
     "ScamPattern",
     "ScamReport",
+    "SavedRecipient",
     "ScamConversationSegment",
     "ScamGuardianSession",
     "ScamAlert",

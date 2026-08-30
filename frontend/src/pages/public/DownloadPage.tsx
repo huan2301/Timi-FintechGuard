@@ -29,9 +29,16 @@ export default function DownloadPage() {
               <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">Dùng Timi trên web ngay hôm nay. Phiên bản di động sẽ được phát hành theo từng nền tảng và thông báo tại đây.</p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <button type="button" onClick={() => setSelectedPlatform("App Store")} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-6 py-3.5 font-bold text-white transition hover:bg-slate-800"><Smartphone className="h-5 w-5" /> App Store</button>
-                <button type="button" onClick={() => setSelectedPlatform("Google Play")} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 py-3.5 font-bold text-slate-800 transition hover:border-blue-300 hover:bg-blue-50"><Smartphone className="h-5 w-5" /> Google Play</button>
+                <button type="button" onClick={() => setSelectedPlatform("Android")} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 py-3.5 font-bold text-slate-800 transition hover:border-blue-300 hover:bg-blue-50"><Smartphone className="h-5 w-5" /> Google Play</button>
               </div>
-              {selectedPlatform && <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800" role="status"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />Bản {selectedPlatform} đang được hoàn thiện. Bạn có thể dùng Timi trên web ngay bây giờ.</div>}
+              <div className="mt-5 flex items-center gap-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                <img src="/timi-android-download-qr.png" alt="Mã QR tải ứng dụng Timi cho Android" className="h-32 w-32 shrink-0 rounded-xl bg-white p-1 object-contain shadow-sm" />
+                <div>
+                  <p className="font-bold text-slate-900">Tải Timi cho Android</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">Quét mã QR để mở liên kết tải ứng dụng trên điện thoại Android.</p>
+                </div>
+              </div>
+              {selectedPlatform && <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800" role="status"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />{selectedPlatform === "Android" ? "Quét mã QR bên trên để tải bản Android của Timi." : `Bản ${selectedPlatform} đang được hoàn thiện. Bạn có thể dùng Timi trên web ngay bây giờ.`}</div>}
             </div>
             <div className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-2xl shadow-violet-200 sm:p-8">
               <div className="flex items-center justify-between"><div><p className="text-xs uppercase tracking-widest text-slate-400">Timi Banking</p><p className="mt-1 text-xl font-bold">Mở nhanh trên trình duyệt</p></div><ShieldCheck className="h-7 w-7 text-emerald-400" /></div>

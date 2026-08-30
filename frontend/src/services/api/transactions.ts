@@ -118,14 +118,13 @@ export interface TransactionSecuritySummary {
   blocked_transactions: number;
 }
 
-export interface RecentContact {
+export interface SavedRecipient {
   id: string;
-  full_name: string;
+  recipient_name: string;
   account_number: string;
   bank_code: string;
-  role?: "user" | "admin" | null;
+  saved_at: string;
   avatar_url?: string | null;
-  last_transferred_at?: string;
 }
 
 export const transactionsApi = {
@@ -219,10 +218,23 @@ export const transactionsApi = {
     return response.data;
   },
 
-  getRecentContacts: async (limit = 8): Promise<RecentContact[]> => {
-    const response = await axiosInstance.get<RecentContact[]>("/v1/transactions/recent-contacts", {
+  getSavedRecipients: async (limit = 20): Promise<SavedRecipient[]> => {
+    const response = await axiosInstance.get<SavedRecipient[]>("/v1/transactions/saved-recipients", {
       params: { limit },
     });
     return response.data;
+  },
+
+  saveRecipient: async (data: {
+    account_number: string;
+    bank_code: string;
+    recipient_lookup_token: string;
+  }): Promise<SavedRecipient> => {
+    const response = await axiosInstance.post<SavedRecipient>("/v1/transactions/saved-recipients", data);
+    return response.data;
+  },
+
+  removeSavedRecipient: async (recipientId: string): Promise<void> => {
+    await axiosInstance.delete(`/v1/transactions/saved-recipients/${recipientId}`);
   },
 };

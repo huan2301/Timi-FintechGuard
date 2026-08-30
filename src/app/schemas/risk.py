@@ -132,6 +132,25 @@ class TrustedRecipientCreate(BaseModel):
     bank_code: str | None = Field(default=None, max_length=100)
 
 
+class SavedRecipientCreate(BaseModel):
+    """Persist a previously verified recipient in the user's address book."""
+
+    account_number: str = Field(..., min_length=6, max_length=19)
+    bank_code: str = Field(..., min_length=2, max_length=100)
+    recipient_lookup_token: str = Field(..., min_length=1, max_length=4096)
+
+
+class SavedRecipientOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    recipient_name: str
+    account_number: str
+    bank_code: str
+    saved_at: datetime
+    avatar_url: str | None = None
+
+
 class WarningFeedbackCreate(BaseModel):
     feedback_type: Literal[
         "helpful", "false_positive", "confirmed_scam", "not_helpful", "unsure"

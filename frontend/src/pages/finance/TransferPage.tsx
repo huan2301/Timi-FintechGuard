@@ -20,9 +20,12 @@ import {
   CreditCard as CardIcon,
   HandCoins,
   ScanLine,
+  Bookmark,
+  BookmarkCheck,
+  Trash2,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { transactionsApi, type RecentContact } from "@/services/api/transactions";
+import { transactionsApi, type SavedRecipient } from "@/services/api/transactions";
 import { authApi } from "@/services/api/auth";
 import AIRiskModal, { type RiskAssessment } from "@/components/ai/AIRiskModal";
 import TransactionAnalysisScreen from "@/components/ai/TransactionAnalysisScreen";
@@ -165,29 +168,15 @@ export default function TransferPage() {
     staleTime: 0,
   });
 
-  // Chỉ hiển thị tài khoản người dùng hợp lệ; admin không phải người nhận.
-  const recentContactsQuery = useQuery({
-    queryKey: ["recent-contacts", user?.id],
-    queryFn: () => transactionsApi.getRecentContacts(10),
-    select: (contacts) => {
-      const ownPhone = user?.phone?.replace(/\D/g, "");
-      const ownName = user?.full_name.trim().toLocaleLowerCase("vi-VN");
-      return contacts.filter((contact) => {
-        const account = contact.account_number.replace(/\D/g, "");
-        const name = contact.full_name.trim().toLocaleLowerCase("vi-VN");
-        return (
-          contact.id !== user?.id &&
-          contact.role !== "admin" &&
-          (!ownPhone || account !== ownPhone) &&
-          (!ownName || name !== ownName)
-        );
-      });
-    },
+  const savedRecipientsQueryKey = ["saved-recipients", user?.id] as const;
+  const savedRecipientsQuery = useQuery({
+    queryKey: savedRecipientsQueryKey,
+    queryFn: () => transactionsApi.getSavedRecipients(20),
     staleTime: 60_000,
   });
-  const [isRecentContactsOpen, setRecentContactsOpen] = useState(false);
-  const recentContacts = recentContactsQuery.data ?? [];
-  const visibleRecentContacts = recentContacts.slice(0, 4);
+  const [isSavedRecipientsOpen, setSavedRecipientsOpen] = useState(false);
+  const savedRecipients = savedRecipientsQuery.data ?? [];
+  const visibleSavedRecipients = savedRecipients.slice(0, 4);
 
   const dailyTransferLimit = 100_000_000;
   const completedToday = dailySummaryQuery.data?.completed_outgoing_today ?? 0;
@@ -205,6 +194,10 @@ export default function TransferPage() {
   const [pin, setPin] = useState("");
   const [isPinVisible, setIsPinVisible] = useState(false);
   const pinVisibilityTimer = useRef<number | null>(null);
+  const savedRecipientSelectionRef = useRef<{
+    accountNumber: string;
+    bankCode: string;
+  } | null>(null);
   const [form, setForm] = useState<TransferForm>({
     recipient_account: "",
     recipient_name: "",
@@ -221,7 +214,6 @@ export default function TransferPage() {
   const [isBankPickerOpen, setBankPickerOpen] = useState(false);
   const [bankSearch, setBankSearch] = useState("");
   const [bankActiveIndex, setBankActiveIndex] = useState(0);
-  const [selectedRecentId, setSelectedRecentId] = useState<string | null>(null);
   const [assistantReviewRequested, setAssistantReviewRequested] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [balanceCheckAttempted, setBalanceCheckAttempted] = useState(false);
@@ -245,6 +237,87 @@ export default function TransferPage() {
       .toLocaleLowerCase("vi-VN")
       .includes(normalizedBankSearch),
   );
+  const savedRecipientForCurrentForm = savedRecipients.find(
+    (recipient) =>
+      recipient.account_number.replace(/\D/g, "") ===
+        form.recipient_account.replace(/\D/g, "") &&
+      recipient.bank_code === form.bank_code,
+  );
+
+  const saveRecipientMutation = useMutation({
+    mutationFn: () =>
+      transactionsApi.saveRecipient({
+        account_number: form.recipient_account.replace(/\D/g, ""),
+        bank_code: form.bank_code,
+        recipient_lookup_token: form.recipient_lookup_token,
+      }),
+    onMutate: async () => {
+      const accountNumber = form.recipient_account.replace(/\D/g, "");
+      const bankCode = form.bank_code;
+      const optimisticRecipient: SavedRecipient = {
+        id: `pending:${accountNumber}:${bankCode}`,
+        recipient_name: form.recipient_name,
+        account_number: accountNumber,
+        bank_code: bankCode,
+        saved_at: new Date().toISOString(),
+      };
+      await queryClient.cancelQueries({ queryKey: savedRecipientsQueryKey });
+      const previousRecipients = queryClient.getQueryData<SavedRecipient[]>(
+        savedRecipientsQueryKey,
+      );
+      queryClient.setQueryData<SavedRecipient[]>(savedRecipientsQueryKey, (current = []) => [
+        optimisticRecipient,
+        ...current.filter(
+          (recipient) =>
+            recipient.account_number.replace(/\D/g, "") !== accountNumber ||
+            recipient.bank_code !== bankCode,
+        ),
+      ]);
+      return { previousRecipients };
+    },
+    onSuccess: (savedRecipient) => {
+      queryClient.setQueryData<SavedRecipient[]>(savedRecipientsQueryKey, (current = []) => [
+        savedRecipient,
+        ...current.filter(
+          (recipient) =>
+            recipient.account_number.replace(/\D/g, "") !==
+              savedRecipient.account_number.replace(/\D/g, "") ||
+            recipient.bank_code !== savedRecipient.bank_code,
+        ),
+      ]);
+    },
+    onError: (error: unknown, _variables, context) => {
+      if (context?.previousRecipients !== undefined) {
+        queryClient.setQueryData(savedRecipientsQueryKey, context.previousRecipients);
+      }
+      alert(getApiErrorDetail(error) || "Không thể lưu người nhận. Vui lòng tra cứu lại rồi thử lại.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: savedRecipientsQueryKey });
+    },
+  });
+  const removeSavedRecipientMutation = useMutation({
+    mutationFn: (recipientId: string) => transactionsApi.removeSavedRecipient(recipientId),
+    onMutate: async (recipientId) => {
+      await queryClient.cancelQueries({ queryKey: savedRecipientsQueryKey });
+      const previousRecipients = queryClient.getQueryData<SavedRecipient[]>(
+        savedRecipientsQueryKey,
+      );
+      queryClient.setQueryData<SavedRecipient[]>(savedRecipientsQueryKey, (current = []) =>
+        current.filter((recipient) => recipient.id !== recipientId),
+      );
+      return { previousRecipients };
+    },
+    onError: (error: unknown, _recipientId, context) => {
+      if (context?.previousRecipients !== undefined) {
+        queryClient.setQueryData(savedRecipientsQueryKey, context.previousRecipients);
+      }
+      alert(getApiErrorDetail(error) || "Không thể bỏ lưu người nhận.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: savedRecipientsQueryKey });
+    },
+  });
 
   useEffect(() => {
     const incomingState = (
@@ -305,7 +378,6 @@ export default function TransferPage() {
     }));
     setBankSearch(banks.find((bank) => bank.code === bankCode)?.name ?? "");
     setRecipientLookupState({ status: "idle" });
-    setSelectedRecentId(null);
     setAssistantReviewRequested(Boolean(assistantTransfer));
     navigate("/transfer", { replace: true, state: null });
   }, [location.search, location.state, navigate]);
@@ -340,7 +412,6 @@ export default function TransferPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["transaction-history"] });
       queryClient.invalidateQueries({ queryKey: ["transaction-history-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-contacts"] });
       void fetchMe();
       if (data.transaction_status === "completed") {
         clearRiskContext();
@@ -429,7 +500,16 @@ export default function TransferPage() {
 
   useEffect(() => {
     const accountNumber = form.recipient_account.replace(/\s/g, "");
-    if (!form.bank_code || !accountNumber) {
+    const bankCode = form.bank_code;
+    const releaseSavedRecipientSelection = () => {
+      if (
+        savedRecipientSelectionRef.current?.accountNumber === accountNumber &&
+        savedRecipientSelectionRef.current?.bankCode === bankCode
+      ) {
+        savedRecipientSelectionRef.current = null;
+      }
+    };
+    if (!bankCode || !accountNumber) {
       setRecipientLookupState({ status: "idle" });
       return;
     }
@@ -440,7 +520,7 @@ export default function TransferPage() {
       });
       return;
     }
-    if (form.bank_code === "TIMI" && !/^\d{10}$/.test(accountNumber)) {
+    if (bankCode === "TIMI" && !/^\d{10}$/.test(accountNumber)) {
       setRecipientLookupState({
         status: "idle",
         message: "Số tài khoản Timi Bank chính là số điện thoại gồm đúng 10 chữ số.",
@@ -454,13 +534,13 @@ export default function TransferPage() {
       void transactionsApi
         .lookupRecipient({
           account_number: accountNumber,
-          bank_code: form.bank_code,
+          bank_code: bankCode,
         })
         .then((result) => {
           if (cancelled) return;
           setForm((current) =>
             current.recipient_account.replace(/\s/g, "") === accountNumber &&
-            current.bank_code === form.bank_code
+            current.bank_code === bankCode
               ? {
                   ...current,
                   recipient_name: result.account_name,
@@ -473,6 +553,7 @@ export default function TransferPage() {
             riskStatus: result.risk_status,
             riskMessage: result.risk_message ?? undefined,
           });
+          releaseSavedRecipientSelection();
         })
         .catch((error: any) => {
           if (cancelled) return;
@@ -482,6 +563,7 @@ export default function TransferPage() {
               error.response?.data?.detail ||
               "Không thể tra cứu tên tài khoản. Vui lòng thử lại.",
           });
+          releaseSavedRecipientSelection();
         });
     }, 500);
 
@@ -493,7 +575,7 @@ export default function TransferPage() {
 
   const handleAccountChange = (recipient_account: string) => {
     setRecipientRiskInfoOpen(false);
-    setSelectedRecentId(null);
+    savedRecipientSelectionRef.current = null;
     setForm((current) => ({
       ...current,
       recipient_account: recipient_account.replace(/\D/g, "").slice(0, 19),
@@ -502,25 +584,60 @@ export default function TransferPage() {
     }));
   };
 
-  const handleSelectRecentContact = (contact: RecentContact) => {
-    setRecentContactsOpen(false);
-    setSelectedRecentId(contact.id);
+  const handleSelectSavedRecipient = (recipient: SavedRecipient) => {
+    const accountNumber = recipient.account_number.replace(/\D/g, "").slice(0, 19);
+    const bankCode = recipient.bank_code;
+    if (
+      form.recipient_account.replace(/\D/g, "") === accountNumber &&
+      form.bank_code === bankCode
+    ) {
+      setSavedRecipientsOpen(false);
+      return;
+    }
+    if (
+      savedRecipientSelectionRef.current?.accountNumber === accountNumber &&
+      savedRecipientSelectionRef.current?.bankCode === bankCode
+    ) {
+      return;
+    }
+    savedRecipientSelectionRef.current = { accountNumber, bankCode };
+    setSavedRecipientsOpen(false);
     setForm((current) => ({
       ...current,
-      recipient_account: contact.account_number.replace(/\D/g, "").slice(0, 19),
-      bank_code: contact.bank_code,
+      recipient_account: accountNumber,
+      bank_code: bankCode,
       // Clear name + token so the existing lookup effect fetches a fresh
       // signed verification token (security requirement of the original flow).
       recipient_name: "",
       recipient_lookup_token: "",
     }));
-    setBankSearch(banks.find((b) => b.code === contact.bank_code)?.name ?? contact.bank_code);
+    setBankSearch(
+      banks.find((bank) => bank.code === recipient.bank_code)?.name ?? recipient.bank_code,
+    );
     setBankPickerOpen(false);
+  };
+
+  const handleSavedRecipientToggle = () => {
+    if (saveRecipientMutation.isPending || removeSavedRecipientMutation.isPending) {
+      return;
+    }
+    if (savedRecipientForCurrentForm) {
+      removeSavedRecipientMutation.mutate(savedRecipientForCurrentForm.id);
+      return;
+    }
+    if (
+      recipientLookupState.status !== "success" ||
+      !form.recipient_name ||
+      !form.recipient_lookup_token
+    ) {
+      return;
+    }
+    saveRecipientMutation.mutate();
   };
 
   const handleBankChange = (bank_code: string) => {
     setRecipientRiskInfoOpen(false);
-    setSelectedRecentId(null);
+    savedRecipientSelectionRef.current = null;
     setForm((current) => ({
       ...current,
       bank_code,
@@ -851,15 +968,15 @@ export default function TransferPage() {
                     Quét mã QR
                   </button>
 
-                  {/* ===== Người nhận gần đây ===== */}
+                  {/* ===== Người nhận đã lưu ===== */}
                   <div className="mb-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-semibold text-slate-800">
-                        Người nhận gần đây
+                        Người nhận đã lưu
                       </span>
                       <button
                         type="button"
-                        onClick={() => setRecentContactsOpen(true)}
+                        onClick={() => setSavedRecipientsOpen(true)}
                         className="text-xs font-semibold text-violet-600 hover:text-violet-700 transition-colors"
                       >
                         Xem tất cả
@@ -868,7 +985,7 @@ export default function TransferPage() {
 
                     <div className="scrollbar-hide flex items-start gap-4 overflow-x-auto pb-1">
                       {/* Loading skeleton */}
-                      {recentContactsQuery.isLoading &&
+                      {savedRecipientsQuery.isLoading &&
                         Array.from({ length: 4 }).map((_, i) => (
                           <div
                             key={i}
@@ -879,26 +996,26 @@ export default function TransferPage() {
                           </div>
                         ))}
 
-                      {/* Real contacts from DB */}
-                      {!recentContactsQuery.isLoading &&
-                        visibleRecentContacts.map((contact) => {
-                          const isSelected = selectedRecentId === contact.id;
-                          const initials = contact.full_name
+                      {/* Personal address book from DB */}
+                      {!savedRecipientsQuery.isLoading &&
+                        visibleSavedRecipients.map((recipient) => {
+                          const isSelected = savedRecipientForCurrentForm?.id === recipient.id;
+                          const initials = recipient.recipient_name
                             .split(" ")
                             .map((w) => w[0])
                             .join("")
                             .slice(0, 2)
                             .toUpperCase();
                           const shortName =
-                            contact.full_name.length > 12
-                              ? contact.full_name.split(" ").slice(0, 2).join(" ")
-                              : contact.full_name;
+                            recipient.recipient_name.length > 12
+                              ? recipient.recipient_name.split(" ").slice(0, 2).join(" ")
+                              : recipient.recipient_name;
 
                           return (
                             <button
-                              key={contact.id}
+                              key={recipient.id}
                               type="button"
-                              onClick={() => handleSelectRecentContact(contact)}
+                              onClick={() => handleSelectSavedRecipient(recipient)}
                               className="flex-shrink-0 flex flex-col items-center gap-1.5 group"
                             >
                               <div className="relative">
@@ -909,26 +1026,20 @@ export default function TransferPage() {
                                       : "ring-0 group-hover:ring-2 group-hover:ring-violet-200 group-hover:ring-offset-1"
                                   }`}
                                 >
-                                  {contact.avatar_url ? (
+                                  {recipient.avatar_url ? (
                                     <img
-                                      src={contact.avatar_url}
-                                      alt={contact.full_name}
-                                      className="w-full h-full object-cover"
-                                      onError={(e) => {
-                                        // Fallback to initials if image fails
-                                        (e.target as HTMLImageElement).style.display =
-                                          "none";
-                                        (
-                                          e.target as HTMLImageElement
-                                        ).nextElementSibling?.classList.remove(
-                                          "hidden",
-                                        );
+                                      src={recipient.avatar_url}
+                                      alt={recipient.recipient_name}
+                                      className="h-full w-full object-cover"
+                                      onError={(event) => {
+                                        event.currentTarget.classList.add("hidden");
+                                        event.currentTarget.nextElementSibling?.classList.remove("hidden");
                                       }}
                                     />
                                   ) : null}
                                   <div
-                                    className={`w-full h-full flex items-center justify-center text-sm font-bold text-white bg-gradient-to-br from-violet-500 to-fuchsia-500 ${
-                                      contact.avatar_url ? "hidden" : ""
+                                    className={`w-full h-full items-center justify-center text-sm font-bold text-white bg-gradient-to-br from-violet-500 to-fuchsia-500 ${
+                                      recipient.avatar_url ? "hidden" : "flex"
                                     }`}
                                   >
                                     {initials}
@@ -959,10 +1070,10 @@ export default function TransferPage() {
                         })}
 
                       {/* Empty state */}
-                      {!recentContactsQuery.isLoading &&
-                        (recentContactsQuery.data ?? []).length === 0 && (
+                      {!savedRecipientsQuery.isLoading &&
+                        savedRecipients.length === 0 && (
                           <div className="flex-1 flex items-center justify-center py-3 text-xs text-slate-400">
-                            Chưa có liên hệ gần đây
+                            Chưa có người nhận đã lưu
                           </div>
                         )}
                     </div>
@@ -1110,6 +1221,37 @@ export default function TransferPage() {
               {/* ---------- CENTER: Amount + Message + Continue ---------- */}
               <div className="lg:col-span-5 space-y-4">
                 <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-violet-100/80">
+                  {recipientLookupState.status === "success" && form.recipient_name && (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Boolean(savedRecipientForCurrentForm)}
+                      aria-busy={saveRecipientMutation.isPending || removeSavedRecipientMutation.isPending}
+                      onClick={handleSavedRecipientToggle}
+                      className="-mx-2 mb-4 flex w-[calc(100%+1rem)] items-center justify-between rounded-xl border border-slate-100 bg-white px-3 py-2 text-left shadow-sm transition-colors hover:bg-violet-50 sm:-mx-3 sm:w-[calc(100%+1.5rem)]"
+                    >
+                      <span className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                        {savedRecipientForCurrentForm ? (
+                          <BookmarkCheck className="h-4 w-4 text-violet-600" />
+                        ) : (
+                          <Bookmark className="h-4 w-4 text-slate-400" />
+                        )}
+                        Lưu người nhận
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className={`relative h-5 w-9 rounded-full transition-colors ${
+                          savedRecipientForCurrentForm ? "bg-violet-600" : "bg-slate-300"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                            savedRecipientForCurrentForm ? "translate-x-4" : "translate-x-0.5"
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  )}
                   <p className="text-sm text-slate-500 mb-1">Bạn đang chuyển</p>
                   <div className="flex items-end gap-2 mb-1">
                     <input
@@ -1328,9 +1470,9 @@ export default function TransferPage() {
           </div>
 
           <Modal
-            open={isRecentContactsOpen}
-            onClose={() => setRecentContactsOpen(false)}
-            ariaLabel="Tất cả người nhận gần đây"
+            open={isSavedRecipientsOpen}
+            onClose={() => setSavedRecipientsOpen(false)}
+            ariaLabel="Tất cả người nhận đã lưu"
             className="max-w-xl"
             showCloseButton
           >
@@ -1339,55 +1481,71 @@ export default function TransferPage() {
                 Danh sách người nhận
               </p>
               <h2 className="mt-1 text-xl font-bold text-slate-900">
-                Tất cả người nhận gần đây
+                Người nhận đã lưu
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Chọn người nhận để điền nhanh thông tin chuyển tiền.
+                Danh bạ riêng của bạn. Khi chọn, Timi vẫn tra cứu và kiểm tra rủi ro lại.
               </p>
             </div>
             <div className="mt-5 space-y-2 pr-1">
-              {recentContacts.map((contact) => {
-                const initials = contact.full_name
+              {savedRecipients.map((recipient) => {
+                const initials = recipient.recipient_name
                   .split(" ")
                   .map((word) => word[0])
                   .join("")
                   .slice(0, 2)
                   .toUpperCase();
                 return (
-                  <button
-                    key={contact.id}
-                    type="button"
-                    onClick={() => handleSelectRecentContact(contact)}
-                    className="flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-violet-50"
+                  <div
+                    key={recipient.id}
+                    className="flex w-full items-center gap-2 rounded-2xl p-1 transition-colors hover:bg-violet-50"
                   >
-                    <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-sm font-bold text-white">
-                      {contact.avatar_url ? (
-                        <img
-                          src={contact.avatar_url}
-                          alt={contact.full_name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSavedRecipient(recipient)}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-2 text-left"
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-sm font-bold text-white">
+                        {recipient.avatar_url ? (
+                          <img
+                            src={recipient.avatar_url}
+                            alt={recipient.recipient_name}
+                            className="h-full w-full object-cover"
+                            onError={(event) => {
+                              event.currentTarget.classList.add("hidden");
+                              event.currentTarget.nextElementSibling?.classList.remove("hidden");
+                            }}
+                          />
+                        ) : null}
+                        <span className={recipient.avatar_url ? "hidden" : undefined}>
                           {initials}
                         </span>
-                      )}
-                    </div>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-slate-800">
-                        {contact.full_name}
+                      </div>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-800">
+                          {recipient.recipient_name}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {recipient.account_number} · {banks.find((bank) => bank.code === recipient.bank_code)?.name ?? recipient.bank_code}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-500">
-                        {contact.account_number} · {banks.find((bank) => bank.code === contact.bank_code)?.name ?? contact.bank_code}
-                      </span>
-                    </span>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                  </button>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Bỏ lưu ${recipient.recipient_name}`}
+                      onClick={() => removeSavedRecipientMutation.mutate(recipient.id)}
+                      disabled={removeSavedRecipientMutation.isPending}
+                      className="shrink-0 rounded-xl p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 );
               })}
-              {!recentContactsQuery.isLoading && recentContacts.length === 0 && (
+              {!savedRecipientsQuery.isLoading && savedRecipients.length === 0 && (
                 <p className="py-8 text-center text-sm text-slate-400">
-                  Chưa có người nhận gần đây.
+                  Chưa có người nhận đã lưu. Tra cứu một tài khoản, rồi bật “Lưu người nhận”.
                 </p>
               )}
             </div>
@@ -1805,7 +1963,6 @@ export default function TransferPage() {
                 setBankSearch("");
                 setBankPickerOpen(false);
                 setRecipientLookupState({ status: "idle" });
-                setSelectedRecentId(null);
                 setRiskData(null);
                 setTxId("");
               }}
