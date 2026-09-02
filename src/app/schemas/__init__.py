@@ -1,18 +1,32 @@
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from typing import Optional, List, Dict, Any
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
+from typing import Any
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from .auth import AuthResponse, LoginRequest, RegisterRequest, TokenResponse
 from .user import UserOut
-from .auth import RegisterRequest, LoginRequest, TokenResponse, AuthResponse
+
+__all__ = [
+    "AuthResponse",
+    "LoginRequest",
+    "RegisterRequest",
+    "TokenResponse",
+    "UserOut",
+]
+
+
 # ========== USER ==========
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=100)
-    phone: Optional[str] = Field(None, max_length=20)
+    phone: str | None = Field(None, max_length=20)
+
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
+
 
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
@@ -21,31 +35,36 @@ class UserResponse(UserBase):
     is_active: bool
     created_at: datetime
 
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
 
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+
 # ========== TRANSACTION ==========
 class TransactionCreate(BaseModel):
     recipient_name: str = Field(..., min_length=1, max_length=100)
     recipient_account: str = Field(..., min_length=1, max_length=100)
-    recipient_bank: Optional[str] = Field(None, max_length=20)
+    recipient_bank: str | None = Field(None, max_length=20)
     amount: Decimal = Field(..., gt=0)
     currency: str = Field(default="VND", max_length=10)
-    description: Optional[str] = None
+    description: str | None = None
+
 
 class RiskAnalysis(BaseModel):
-    ml_risk_score: Optional[float] = None
-    rule_risk_score: Optional[float] = None
-    final_risk_score: Optional[float] = None
-    risk_level: Optional[str] = None
-    warning_reason: Optional[str] = None
-    matched_blacklist: List[Dict[str, Any]] = []
-    matched_patterns: List[Dict[str, Any]] = []
+    ml_risk_score: float | None = None
+    rule_risk_score: float | None = None
+    final_risk_score: float | None = None
+    risk_level: str | None = None
+    warning_reason: str | None = None
+    matched_blacklist: list[dict[str, Any]] = []
+    matched_patterns: list[dict[str, Any]] = []
+
 
 class TransactionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -54,16 +73,18 @@ class TransactionResponse(BaseModel):
     recipient_name: str
     recipient_account: str
     amount: Decimal
-    risk_level: Optional[str]
+    risk_level: str | None
     status: str
     agent_warning_shown: bool
-    user_decision: Optional[str]
+    user_decision: str | None
     created_at: datetime
-    risk_analysis: Optional[RiskAnalysis] = None
+    risk_analysis: RiskAnalysis | None = None
+
 
 class TransactionDecision(BaseModel):
     decision: str = Field(..., pattern="^(confirmed|cancelled|escalated)$")
-    user_note: Optional[str] = None
+    user_note: str | None = None
+
 
 # ========== INTERVENTION ==========
 class InterventionResponse(BaseModel):
@@ -71,10 +92,11 @@ class InterventionResponse(BaseModel):
     current_step: int
     total_steps: int
     message: str
-    actions: List[str]
+    actions: list[str]
     can_proceed: bool
-    risk_factors: List[str] = []
+    risk_factors: list[str] = []
     requires_decision: bool = True
+
 
 # ========== BLACKLIST (Admin) ==========
 class BlacklistCreate(BaseModel):
@@ -82,7 +104,8 @@ class BlacklistCreate(BaseModel):
     entity_value: str
     source: str
     risk_score: float = Field(..., ge=0.0, le=1.0)
-    evidence: Optional[Dict[str, Any]] = None
+    evidence: dict[str, Any] | None = None
+
 
 class BlacklistResponse(BlacklistCreate):
     model_config = ConfigDict(from_attributes=True)
@@ -90,8 +113,9 @@ class BlacklistResponse(BlacklistCreate):
     is_active: bool
     created_at: datetime
 
+
 # ========== SCAM REPORT ==========
 class ScamReportCreate(BaseModel):
-    transaction_id: Optional[UUID] = None
+    transaction_id: UUID | None = None
     report_type: str = Field(..., pattern="^(false_positive|new_scam|bypass)$")
     description: str = Field(..., min_length=10)

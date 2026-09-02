@@ -1,8 +1,10 @@
+import uuid
+
 import pandas as pd
 from sqlalchemy.orm import Session
-from typing import List, Dict, Tuple
+
 from ..models import Blacklist
-import uuid
+
 
 class ExcelImporter:
     """
@@ -18,7 +20,7 @@ class ExcelImporter:
         try:
             df = pd.read_excel(file_path)
             # Bo qua dong header trung neu co
-            df = df[df['STK'] != 'STK'].copy() if 'STK' in df.columns else df
+            df = df[df["STK"] != "STK"].copy() if "STK" in df.columns else df
             missing = [col for col in cls.REQUIRED_COLUMNS if col not in df.columns]
             if missing:
                 raise ValueError(f"Thieu cot: {missing}. Cac cot phai co: {cls.REQUIRED_COLUMNS}")
@@ -30,68 +32,64 @@ class ExcelImporter:
     def _clean_dataframe(cls, df: pd.DataFrame) -> pd.DataFrame:
         """Lam sach DataFrame truoc khi import"""
         # Bo dong header trung (neu dong dau cung la header text)
-        df = df[df['STK'] != 'STK'].copy()
+        df = df[df["STK"] != "STK"].copy()
 
         # Lam sach STK: bo khoang trang, giu nguyen noi dung
-        df['STK_clean'] = df['STK'].astype(str).str.strip().str.replace(' ', '')
+        df["STK_clean"] = df["STK"].astype(str).str.strip().str.replace(" ", "")
 
         # Loai bo dong khong co STK hop le
-        df = df[df['STK_clean'].notna() & (df['STK_clean'] != 'nan') & (df['STK_clean'] != '')]
+        df = df[df["STK_clean"].notna() & (df["STK_clean"] != "nan") & (df["STK_clean"] != "")]
 
         # Lam sach ten: uu tien Nguoi bi to cao, fallback Ten tai khoan
-        df['ten'] = df['Nguoi bi to cao'].fillna(df['Ten tai khoan']).astype(str).str.strip()
-        df['ten'] = df['ten'].replace('nan', '').replace('None', '')
+        df["ten"] = df["Nguoi bi to cao"].fillna(df["Ten tai khoan"]).astype(str).str.strip()
+        df["ten"] = df["ten"].replace("nan", "").replace("None", "")
 
         # ✅ Lam sach ngan hang — se dua vao cot bank RIENG
-        df['ngan_hang'] = df['Ngan hang'].astype(str).str.strip().replace('nan', 'Khong ro')
+        df["ngan_hang"] = df["Ngan hang"].astype(str).str.strip().replace("nan", "Khong ro")
 
         # Lam sach SDT
         def clean_phone(x):
             if pd.isna(x):
-                return ''
+                return ""
             try:
                 s = str(int(float(x)))
                 return s
             except (TypeError, ValueError, OverflowError):
-                s = str(x).strip().replace('.0', '')
-                return s if s != 'nan' else ''
+                s = str(x).strip().replace(".0", "")
+                return s if s != "nan" else ""
 
-        df['sdt'] = df['SDT'].apply(clean_phone)
+        df["sdt"] = df["SDT"].apply(clean_phone)
 
         # Lam sach so tien (bo dau phay phan cach hang nghin)
         def clean_amount(val):
             if pd.isna(val):
                 return None
-            s = str(val).replace(',', '').strip()
+            s = str(val).replace(",", "").strip()
             try:
                 return float(s)
             except (TypeError, ValueError, OverflowError):
                 return None
 
-        df['so_tien'] = df['So tien'].apply(clean_amount)
+        df["so_tien"] = df["So tien"].apply(clean_amount)
 
         # Lam sach luot xem
         def clean_views(val):
             if pd.isna(val):
                 return None
-            s = str(val).replace(' luot xem', '').replace(',', '').strip()
+            s = str(val).replace(" luot xem", "").replace(",", "").strip()
             try:
                 return int(float(s))
             except (TypeError, ValueError, OverflowError):
                 return None
 
-        df['luot_xem'] = df['Luot xem'].apply(clean_views)
+        df["luot_xem"] = df["Luot xem"].apply(clean_views)
 
         return df
 
     @classmethod
     def import_to_blacklist(
-        cls,
-        db: Session,
-        file_path: str,
-        source: str = "excel_scam_report",
-        base_risk_score: float = 0.90
-    ) -> Dict:
+        cls, db: Session, file_path: str, source: str = "excel_scam_report", base_risk_score: float = 0.90
+    ) -> dict:
         """
         Import du lieu tu Excel vao bang blacklist.
         Moi STK = 1 entity account. Moi SDT (neu co) = 1 entity phone.
@@ -109,21 +107,25 @@ class ExcelImporter:
 
         for idx, row in df.iterrows():
             try:
-                stk = row['STK_clean']
-                ten = row['ten'] if row['ten'] else row['STK_clean']
-                ngan_hang = row['ngan_hang']
-                sdt = row['sdt']
-                so_tien = row['so_tien']
-                luot_xem = row['luot_xem']
+                stk = row["STK_clean"]
+                ten = row["ten"] if row["ten"] else row["STK_clean"]
+                ngan_hang = row["ngan_hang"]
+                sdt = row["sdt"]
+                so_tien = row["so_tien"]
+                luot_xem = row["luot_xem"]
 
                 # --- Import STK (account) ---
                 # ✅ Kiem tra trung lap: STK + Ngan hang (dieu kien KIEN QUYET)
-                existing_acc = db.query(Blacklist).filter(
-                    Blacklist.entity_value == stk,
-                    Blacklist.bank == ngan_hang,  # ✅ Check ca bank
-                    Blacklist.entity_type == "account",
-                    Blacklist.is_active == True
-                ).first()
+                existing_acc = (
+                    db.query(Blacklist)
+                    .filter(
+                        Blacklist.entity_value == stk,
+                        Blacklist.bank == ngan_hang,  # ✅ Check ca bank
+                        Blacklist.entity_type == "account",
+                        Blacklist.is_active.is_(True),
+                    )
+                    .first()
+                )
 
                 if not existing_acc:
                     # Tinh risk score dua tren luot xem
@@ -141,7 +143,7 @@ class ExcelImporter:
                         "sdt": sdt if sdt else None,
                         "luot_xem": luot_xem,
                         "imported_from": file_path,
-                        "row_index": int(idx)
+                        "row_index": int(idx),
                     }
 
                     # Loc bo None values de JSON gon hon
@@ -156,7 +158,7 @@ class ExcelImporter:
                         source=source,
                         risk_score=risk_score,
                         evidence=evidence,
-                        is_active=True
+                        is_active=True,
                     )
                     db.add(blacklist_entry)
                     imported_accounts += 1
@@ -165,11 +167,15 @@ class ExcelImporter:
 
                 # --- Import SDT (phone) neu co ---
                 if sdt and len(sdt) >= 9:
-                    existing_phone = db.query(Blacklist).filter(
-                        Blacklist.entity_value == sdt,
-                        Blacklist.entity_type == "phone",
-                        Blacklist.is_active == True
-                    ).first()
+                    existing_phone = (
+                        db.query(Blacklist)
+                        .filter(
+                            Blacklist.entity_value == sdt,
+                            Blacklist.entity_type == "phone",
+                            Blacklist.is_active.is_(True),
+                        )
+                        .first()
+                    )
 
                     if not existing_phone:
                         phone_evidence = {
@@ -179,7 +185,7 @@ class ExcelImporter:
                             "so_tien_bi_lua": so_tien,
                             "luot_xem": luot_xem,
                             "imported_from": file_path,
-                            "row_index": int(idx)
+                            "row_index": int(idx),
                         }
                         phone_evidence = {k: v for k, v in phone_evidence.items() if v is not None}
 
@@ -190,7 +196,7 @@ class ExcelImporter:
                             source=source,
                             risk_score=base_risk_score,
                             evidence=phone_evidence,
-                            is_active=True
+                            is_active=True,
                         )
                         db.add(phone_entry)
                         imported_phones += 1
@@ -208,38 +214,38 @@ class ExcelImporter:
             "imported_accounts": imported_accounts,
             "imported_phones": imported_phones,
             "skipped": skipped,
-            "errors": errors[:20]  # Gioi han 20 loi dau
+            "errors": errors[:20],  # Gioi han 20 loi dau
         }
 
     @classmethod
-    def preview_data(cls, file_path: str, limit: int = 10) -> List[Dict]:
+    def preview_data(cls, file_path: str, limit: int = 10) -> list[dict]:
         """Xem truoc du lieu trong file Excel sau khi lam sach"""
         cls.validate_file(file_path)
         df = cls._clean_dataframe(pd.read_excel(file_path))
-        preview_df = df.head(limit)[['ten', 'STK_clean', 'ngan_hang', 'sdt', 'so_tien', 'luot_xem']]
-        preview_df.columns = ['ten', 'stk', 'ngan_hang', 'sdt', 'so_tien', 'luot_xem']
+        preview_df = df.head(limit)[["ten", "STK_clean", "ngan_hang", "sdt", "so_tien", "luot_xem"]]
+        preview_df.columns = ["ten", "stk", "ngan_hang", "sdt", "so_tien", "luot_xem"]
         return preview_df.to_dict("records")
 
     @classmethod
-    def get_statistics(cls, file_path: str) -> Dict:
+    def get_statistics(cls, file_path: str) -> dict:
         """Thong ke du lieu trong file Excel"""
         cls.validate_file(file_path)
         df = cls._clean_dataframe(pd.read_excel(file_path))
 
         return {
             "total_records": len(df),
-            "has_phone": (df['sdt'] != '').sum(),
-            "missing_phone": (df['sdt'] == '').sum(),
-            "unique_banks": df['ngan_hang'].nunique(),
-            "top_banks": df['ngan_hang'].value_counts().head(5).to_dict(),
+            "has_phone": (df["sdt"] != "").sum(),
+            "missing_phone": (df["sdt"] == "").sum(),
+            "unique_banks": df["ngan_hang"].nunique(),
+            "top_banks": df["ngan_hang"].value_counts().head(5).to_dict(),
             "amount_stats": {
-                "min": df['so_tien'].min(),
-                "max": df['so_tien'].max(),
-                "mean": round(df['so_tien'].mean(), 2) if df['so_tien'].notna().any() else None
+                "min": df["so_tien"].min(),
+                "max": df["so_tien"].max(),
+                "mean": round(df["so_tien"].mean(), 2) if df["so_tien"].notna().any() else None,
             },
             "view_stats": {
-                "min": df['luot_xem'].min(),
-                "max": df['luot_xem'].max(),
-                "mean": round(df['luot_xem'].mean(), 2) if df['luot_xem'].notna().any() else None
-            }
+                "min": df["luot_xem"].min(),
+                "max": df["luot_xem"].max(),
+                "mean": round(df["luot_xem"].mean(), 2) if df["luot_xem"].notna().any() else None,
+            },
         }

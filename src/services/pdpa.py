@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # ── Masking ─────────────────────────────────────────────────────────────────
 
+
 def mask_account_number(acc: str) -> str:
     """Mask số tài khoản: giữ 3 đầu + 3 cuối, thay giữa bằng *.
 
@@ -62,20 +63,19 @@ def mask_transaction_metadata(data: dict) -> dict:
 
 # ── Encryption (optional — Bước 4c) ────────────────────────────────────────
 
+
 def _get_fernet():
     """Lazy-load Fernet với key từ settings. Raise rõ ràng nếu key trống."""
     try:
         from cryptography.fernet import Fernet
     except ImportError as e:
-        raise RuntimeError(
-            "cryptography chưa được cài. Chạy: pip install cryptography"
-        ) from e
+        raise RuntimeError("cryptography chưa được cài. Chạy: pip install cryptography") from e
 
     key = get_settings().pii_encryption_key
     if not key:
         raise ValueError(
             "PII_ENCRYPTION_KEY chưa được cấu hình trong .env. "
-            "Sinh key: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            'Sinh key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
         )
     return Fernet(key.encode())
 

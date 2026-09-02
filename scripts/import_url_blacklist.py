@@ -25,12 +25,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import select
+from sqlalchemy import select  # noqa: E402 - project root must be available first
 
-from src.app.db.session import SessionLocal
-from src.app.models.blacklist import Blacklist
-from src.app.services.url_blacklist import normalize_url_host
-
+from src.app.db.session import SessionLocal  # noqa: E402
+from src.app.models.blacklist import Blacklist  # noqa: E402
+from src.app.services.url_blacklist import normalize_url_host  # noqa: E402
 
 URL_FIELD_NAMES = {"url", "link", "domain", "host", "website", "website_url"}
 
@@ -45,7 +44,7 @@ def _strings_from_json(value: Any) -> Iterable[str]:
         for key, item in value.items():
             if key.lower() in URL_FIELD_NAMES:
                 yield from _strings_from_json(item)
-            elif isinstance(item, (list, dict)):
+            elif isinstance(item, list | dict):
                 yield from _strings_from_json(item)
 
 
@@ -66,7 +65,9 @@ def read_candidates(path: Path) -> Iterable[str]:
             fields = [field for field in reader.fieldnames if field and field.lower().strip() in URL_FIELD_NAMES]
             # Prefer an explicit URL column. Files that also contain a domain
             # column would otherwise process every row twice.
-            url_field = next((field for field in fields if field.lower().strip() in {"url", "link", "website_url"}), None)
+            url_field = next(
+                (field for field in fields if field.lower().strip() in {"url", "link", "website_url"}), None
+            )
             fields = [url_field] if url_field else fields
             for row in reader:
                 for field in fields:
@@ -99,14 +100,16 @@ def import_file(db, path: Path) -> tuple[int, int, int]:
     host_values = list(hosts)
     # Avoid one database round-trip for every domain in a large feed.
     for start in range(0, len(host_values), 500):
-        chunk = host_values[start:start + 500]
-        existing_hosts.update(db.scalars(
-            select(Blacklist.entity_value).where(
-                Blacklist.entity_type == "url",
-                Blacklist.entity_value.in_(chunk),
-                Blacklist.is_active.is_(True),
-            )
-        ).all())
+        chunk = host_values[start : start + 500]
+        existing_hosts.update(
+            db.scalars(
+                select(Blacklist.entity_value).where(
+                    Blacklist.entity_type == "url",
+                    Blacklist.entity_value.in_(chunk),
+                    Blacklist.is_active.is_(True),
+                )
+            ).all()
+        )
 
     inserted = 0
     for host, raw_value in hosts.items():

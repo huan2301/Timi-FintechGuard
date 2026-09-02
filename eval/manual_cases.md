@@ -110,7 +110,7 @@ Smoke canonical (không phụ thuộc DB) thường gồm Timi ledger, risk rule
 | `eval/results/report.md` | Metrics tổng hợp |
 | `eval/manual_cases.md` | File này |
 | `docs/PHASE1_IMPLEMENTATION.md` | Checklist Phase 1 |
-| `ROADMAP.md` / `JOURNAL.md` | Lịch 6 tuần |
+| `README.md` | Tổng quan phase và kết quả dự án |
 
 ---
 

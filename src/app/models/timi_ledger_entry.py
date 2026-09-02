@@ -34,9 +34,7 @@ class TimiLedgerEntry(Base):
         Index("ix_timi_ledger_entries_user_created", "user_id", "created_at"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     transaction_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
     )
@@ -46,9 +44,7 @@ class TimiLedgerEntry(Base):
     entry_type: Mapped[str] = mapped_column(String(10), nullable=False)
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
     balance_after: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    transaction: Mapped["Transaction"] = relationship(back_populates="timi_ledger_entries")
-    user: Mapped["User"] = relationship(back_populates="timi_ledger_entries")
+    transaction: Mapped[Transaction] = relationship(back_populates="timi_ledger_entries")
+    user: Mapped[User] = relationship(back_populates="timi_ledger_entries")

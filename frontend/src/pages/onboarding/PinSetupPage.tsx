@@ -11,6 +11,7 @@ import {
   Shield,
 } from "lucide-react";
 import { authApi } from "@/services/api/auth";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const PIN_REVEAL_DURATION_MS = 500;
 
@@ -49,8 +50,8 @@ export default function PinSetupPage() {
       navigate("/setup-face", {
         replace: true,
       });
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || "Không thể lưu mã PIN");
+    } catch (requestError: unknown) {
+      setError(getApiErrorMessage(requestError, "Không thể lưu mã PIN"));
     } finally {
       setSaving(false);
     }

@@ -1,4 +1,4 @@
-"""Internal directory of account names used by the sandbox transfer form."""
+"""Internal directory of account names used for risk-data compatibility."""
 
 from __future__ import annotations
 
@@ -20,15 +20,9 @@ class RecipientDirectory(Base, TimestampMixin):
     """
 
     __tablename__ = "recipient_directory"
-    __table_args__ = (
-        UniqueConstraint(
-            "account_number", "bank_code", name="uq_recipient_directory_account_bank"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("account_number", "bank_code", name="uq_recipient_directory_account_bank"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     account_number: Mapped[str] = mapped_column(String(64), nullable=False)
     bank_code: Mapped[str] = mapped_column(String(32), nullable=False)
     account_name: Mapped[str] = mapped_column(String(255), nullable=False)

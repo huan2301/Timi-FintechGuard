@@ -21,21 +21,22 @@ engine = create_engine(
 
 
 if settings.database_url.startswith("postgresql"):
+
     @event.listens_for(engine, "connect")
     def set_application_schema(dbapi_connection, _connection_record) -> None:
         """Set search_path after connect; Neon poolers reject startup options."""
         cursor = dbapi_connection.cursor()
         try:
-            cursor.execute(
-                f"SET search_path TO {settings.database_schema}, public"
-            )
+            cursor.execute(f"SET search_path TO {settings.database_schema}, public")
         finally:
             cursor.close()
+
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 if settings.database_url.startswith("postgresql"):
+
     @event.listens_for(Session, "after_begin")
     def set_transaction_schema(_session, _transaction, connection) -> None:
         """Apply the schema to every transaction, including post-commit refreshes."""
@@ -44,9 +45,7 @@ if settings.database_url.startswith("postgresql"):
         # supports ``SET LOCAL search_path``.
         if connection.dialect.name != "postgresql":
             return
-        connection.exec_driver_sql(
-            f"SET LOCAL search_path TO {settings.database_schema}, public"
-        )
+        connection.exec_driver_sql(f"SET LOCAL search_path TO {settings.database_schema}, public")
 
 
 def get_db() -> Generator[Session, None, None]:

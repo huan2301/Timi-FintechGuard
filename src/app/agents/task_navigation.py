@@ -320,8 +320,7 @@ _KNOWN_BANKS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 _ACCOUNT_PATTERN = re.compile(r"(?<!\d)(?:\d[ .-]?){6,19}\d(?!\d)")
 _ACCOUNT_LABEL_PATTERN = re.compile(
-    r"(?:stk|so\s*tk|so\s*tai\s*khoan|tai\s*khoan)\s*(?:la|:|=)?\s*"
-    r"((?:\d[ .-]?){5,18}\d)",
+    r"(?:stk|so\s*tk|so\s*tai\s*khoan|tai\s*khoan)\s*(?:la|:|=)?\s*" r"((?:\d[ .-]?){5,18}\d)",
     re.IGNORECASE,
 )
 
@@ -342,9 +341,7 @@ class TaskNavigationDecision:
 
 def _normalize(value: str) -> str:
     decomposed = unicodedata.normalize("NFD", value.lower())
-    without_accents = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    )
+    without_accents = "".join(character for character in decomposed if not unicodedata.combining(character))
     return without_accents.replace("đ", "d")
 
 
@@ -370,9 +367,7 @@ def _extract_account(
         return None
     for candidate in _ACCOUNT_PATTERN.finditer(message):
         account = re.sub(r"\D", "", candidate.group(0))
-        if 6 <= len(account) <= 19 and (
-            exclude_value is None or int(account) != exclude_value
-        ):
+        if 6 <= len(account) <= 19 and (exclude_value is None or int(account) != exclude_value):
             return account
     return None
 
@@ -390,8 +385,7 @@ def _extract_amount(message: str, *, allow_bare: bool) -> int | None:
             multiplier = 1_000
     else:
         match = re.search(
-            r"(?:so\s*tien|chuyen\s*(?:tien|khoan)?|gui)\s*(?:la|:|=)?\s*"
-            r"(\d+(?:[.,]\d{3})*)",
+            r"(?:so\s*tien|chuyen\s*(?:tien|khoan)?|gui)\s*(?:la|:|=)?\s*" r"(\d+(?:[.,]\d{3})*)",
             compact,
         )
         if not match and allow_bare:
@@ -413,27 +407,28 @@ def _is_transfer_start(message: str) -> bool:
     # the verb and recipient (e.g. "chuyển khoản 1 triệu cho..."). Those are
     # still explicit transaction starts, while guidance questions are filtered
     # by _is_transfer_guidance_question before this function is called.
-    return _extract_amount(message, allow_bare=True) is not None or _extract_account(
-        message,
-        allow_bare=True,
-    ) is not None
+    return (
+        _extract_amount(message, allow_bare=True) is not None
+        or _extract_account(
+            message,
+            allow_bare=True,
+        )
+        is not None
+    )
 
 
 def _is_transfer_guidance_question(message: str) -> bool:
     """Keep informational transfer questions on the Chat Support path."""
 
     normalized = _normalize(message)
-    if "huong dan" in normalized and any(
-        phrase in normalized for phrase in _TRANSFER_CONTEXT_TERMS
-    ):
+    if "huong dan" in normalized and any(phrase in normalized for phrase in _TRANSFER_CONTEXT_TERMS):
         return True
     if any(phrase in normalized for phrase in _TRANSFER_GUIDANCE_PHRASES):
         return True
     if not any(phrase in normalized for phrase in _TRANSFER_CONTEXT_TERMS):
         return False
-    return (
-        any(phrase in normalized for phrase in _TRANSFER_QUESTION_CUES)
-        or normalized.rstrip().endswith((" khong", " a", " ha", " nhi"))
+    return any(phrase in normalized for phrase in _TRANSFER_QUESTION_CUES) or normalized.rstrip().endswith(
+        (" khong", " a", " ha", " nhi")
     )
 
 
@@ -481,17 +476,14 @@ def _is_history_guidance_question(message: str) -> bool:
     """Keep history capability questions out of contextual page navigation."""
 
     normalized = _normalize(message)
-    return (
-        "lich su" in normalized
-        and any(
-            cue in normalized
-            for cue in (
-                "tra cuu",
-                "co the xem gi",
-                "xem gi",
-                "bo loc",
-                "tim giao dich",
-            )
+    return "lich su" in normalized and any(
+        cue in normalized
+        for cue in (
+            "tra cuu",
+            "co the xem gi",
+            "xem gi",
+            "bo loc",
+            "tim giao dich",
         )
     )
 
@@ -529,19 +521,16 @@ def _is_guardian_disable_request(message: str) -> bool:
         )
     ):
         return False
-    return (
-        any(term in normalized for term in _GUARDIAN_TERMS)
-        and normalized.startswith(
-            (
-                "tat ",
-                "dung ",
-                "toi muon tat",
-                "toi can tat",
-                "hay tat",
-                "toi muon dung",
-                "toi can dung",
-                "hay dung",
-            )
+    return any(term in normalized for term in _GUARDIAN_TERMS) and normalized.startswith(
+        (
+            "tat ",
+            "dung ",
+            "toi muon tat",
+            "toi can tat",
+            "hay tat",
+            "toi muon dung",
+            "toi can dung",
+            "hay dung",
         )
     )
 
@@ -561,23 +550,20 @@ def _is_guardian_enable_request(message: str) -> bool:
         )
     ):
         return False
-    return (
-        any(term in normalized for term in _GUARDIAN_TERMS)
-        and normalized.startswith(
-            (
-                "bat ",
-                "mo ",
-                "kich hoat ",
-                "toi muon bat",
-                "toi can bat",
-                "hay bat",
-                "toi muon mo",
-                "toi can mo",
-                "hay mo",
-                "toi muon kich hoat",
-                "toi can kich hoat",
-                "hay kich hoat",
-            )
+    return any(term in normalized for term in _GUARDIAN_TERMS) and normalized.startswith(
+        (
+            "bat ",
+            "mo ",
+            "kich hoat ",
+            "toi muon bat",
+            "toi can bat",
+            "hay bat",
+            "toi muon mo",
+            "toi can mo",
+            "hay mo",
+            "toi muon kich hoat",
+            "toi can kich hoat",
+            "hay kich hoat",
         )
     )
 
@@ -652,10 +638,7 @@ def block_completed_setup_navigation(
     if route == "/setup-face" and face_enrolled:
         return TaskNavigationDecision(
             handled=True,
-            answer=(
-                "Face ID của bạn đã được thiết lập, nên Timi không mở lại phần "
-                "đăng ký khuôn mặt."
-            ),
+            answer=("Face ID của bạn đã được thiết lập, nên Timi không mở lại phần đăng ký khuôn mặt."),
             task_state=decision.task_state,
             history_message=decision.history_message,
             allow_contextual_navigation=False,
@@ -663,10 +646,7 @@ def block_completed_setup_navigation(
     if route == "/setup-pin" and pin_configured:
         return TaskNavigationDecision(
             handled=True,
-            answer=(
-                "Bạn đã thiết lập mã PIN giao dịch. Nếu cần đổi PIN, hãy mở phần "
-                "cập nhật mã PIN trong Hồ sơ."
-            ),
+            answer=("Bạn đã thiết lập mã PIN giao dịch. Nếu cần đổi PIN, hãy mở phần cập nhật mã PIN trong Hồ sơ."),
             task_state=decision.task_state,
             action=AssistantUiAction(type="navigate_app", route="/me?open=pin"),
             history_message=decision.history_message,
@@ -715,7 +695,8 @@ def _remember_recipient(draft: AssistantTransferDraft) -> AssistantTransferDraft
 
 
 def _empty_state(
-    *, last_recipient: AssistantTransferDraft | None = None,
+    *,
+    last_recipient: AssistantTransferDraft | None = None,
 ) -> AssistantTaskState:
     return AssistantTaskState(last_recipient=last_recipient)
 

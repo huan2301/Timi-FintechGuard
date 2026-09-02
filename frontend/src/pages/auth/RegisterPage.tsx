@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Shield, Mail, Lock, User, Eye, EyeOff, Phone, ArrowLeft, ArrowRight, Sparkles, Fingerprint, Globe, Zap, CheckCircle2, Check } from "lucide-react";
 import { authApi } from "@/services/api/auth";
 import TimiLogo from "@/components/brand/TimiLogo";
+import { getApiErrorDetail, getApiErrorMessage } from "@/utils/apiError";
 
 const floatingIcons = [
   { Icon: Shield, top: "8%", left: "10%", delay: "0s", size: 28 },
@@ -15,9 +16,9 @@ const floatingIcons = [
 ];
 
 const benefits = [
-  "Bảo vệ AI 24/7",
-  "Chuyển tiền siêu tốc",
-  "Không phí ẩn",
+  "Giải thích rủi ro bằng AI",
+  "Chuyển tiền giữa các tài khoản Timi",
+  "Dữ liệu mô phỏng minh bạch",
 ];
 
 function getPasswordRuleError(password: string): string | null {
@@ -59,13 +60,14 @@ export default function RegisterPage() {
     onSuccess: () => {
       setOtpSent(true);
     },
-    onError: (err: any) => {
-      const detail = err.response?.data?.detail;
+    onError: (err: unknown) => {
+      const detail = getApiErrorDetail(err);
       if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+        const fieldErrors = detail as Record<string, unknown>;
         setErrors((current) => ({
           ...current,
-          ...(typeof detail.email === "string" ? { email: detail.email } : {}),
-          ...(typeof detail.phone === "string" ? { phone: detail.phone } : {}),
+          ...(typeof fieldErrors.email === "string" ? { email: fieldErrors.email } : {}),
+          ...(typeof fieldErrors.phone === "string" ? { phone: fieldErrors.phone } : {}),
         }));
         return;
       }
@@ -91,7 +93,7 @@ export default function RegisterPage() {
   const verifyMutation = useMutation({
     mutationFn: authApi.verifyRegisterOtp,
     onSuccess: () => navigate("/login", { replace: true, state: { registrationEmail: form.email } }),
-    onError: (err: any) => setErrors({ general: err.response?.data?.detail || "Mã xác minh không hợp lệ" }),
+    onError: (err: unknown) => setErrors({ general: getApiErrorMessage(err, "Mã xác minh không hợp lệ") }),
   });
 
   const checkAvailability = async (field: "email" | "phone") => {
@@ -156,8 +158,12 @@ export default function RegisterPage() {
       setErrors({ general: "Vui lòng đồng ý với điều khoản sử dụng" });
       return;
     }
-    const { confirmPassword, ...payload } = form;
-    registerMutation.mutate(payload);
+    registerMutation.mutate({
+      email: form.email,
+      full_name: form.full_name,
+      phone: form.phone,
+      password: form.password,
+    });
   };
 
   const updateOtpDigit = (index: number, value: string) => {
@@ -214,13 +220,13 @@ export default function RegisterPage() {
             <div className="absolute bottom-0 left-0 right-0 p-8">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 backdrop-blur-md rounded-full border border-white/30 mb-4">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-semibold text-white">Miễn phí trọn đời</span>
+                <span className="text-xs font-semibold text-white">Tài khoản thử nghiệm</span>
               </div>
               <h2 className="text-3xl font-bold text-white mb-3 leading-tight">
                 Bắt đầu hành trình<br />tài chính thông minh
               </h2>
               <p className="text-slate-200 text-sm leading-relaxed max-w-sm">
-                Tham gia cùng 2 triệu+ người dùng đang được Timi bảo vệ mỗi ngày. Đăng ký chỉ mất 30 giây.
+                Tạo tài khoản Timi để khám phá các lớp xác thực, chuyển tiền nội bộ và cảnh báo rủi ro.
               </p>
             </div>
           </div>
@@ -276,7 +282,7 @@ export default function RegisterPage() {
           <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-xl shadow-slate-200/50 border border-white/60 p-8 space-y-5">
             <div>
               <h2 className="text-2xl font-bold text-slate-900 mb-1">Tạo tài khoản</h2>
-              <p className="text-sm text-slate-400">Đăng ký miễn phí, chỉ mất 30 giây</p>
+              <p className="text-sm text-slate-400">Đăng ký tài khoản thử nghiệm bằng email và OTP</p>
             </div>
 
             {errors.general && (
@@ -554,7 +560,7 @@ export default function RegisterPage() {
 
           {/* Footer */}
           <p className="text-center text-xs text-slate-400 mt-8">
-            © 2026 Timi. Bảo vệ bạn mọi lúc.
+            © 2026 Timi. Bản demo AI Financial Guardian.
           </p>
         </div>
       </div>

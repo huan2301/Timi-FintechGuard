@@ -8,8 +8,8 @@ Create Date: 2026-08-10
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from src.app.config import get_settings
 
 revision: str = "b4c1d8e7f239"
@@ -20,13 +20,11 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Create exactly DATABASE_SCHEMA.recipient_directory when it is absent."""
-    bind = op.get_bind()
     schema = get_settings().database_schema
-    quoted_schema = bind.dialect.identifier_preparer.quote(schema)
     op.execute(
         sa.text(
             f"""
-            CREATE TABLE IF NOT EXISTS {quoted_schema}.recipient_directory (
+            CREATE TABLE IF NOT EXISTS {schema}.recipient_directory (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 account_number VARCHAR(64) NOT NULL,
                 bank_code VARCHAR(32) NOT NULL,

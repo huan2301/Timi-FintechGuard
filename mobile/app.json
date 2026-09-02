@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Timi - An toàn tài chính",
+    "slug": "timi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/timi-logo.png",
+    "scheme": "timi",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "icon": "./assets/expo.icon"
+    },
+    "android": {
+      "package": "com.timi.app",
+      "permissions": [
+        "CAMERA",
+        "android.permission.CAMERA"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#EEE9FF",
+        "foregroundImage": "./assets/images/timi-logo.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/timi-logo.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F4F1FF",
+          "image": "./assets/images/timi-logo.png",
+          "imageWidth": 180
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phép Timi sử dụng camera để quét QR và xác minh khuôn mặt.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.timi.androidonly"
+        }
+      ],
+      "expo-font",
+      "expo-sharing"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b7e926d7-ed82-447d-b7d5-83d46ea0939a"
+      }
+    },
+    "owner": "huanziis-team"
+  }
+}

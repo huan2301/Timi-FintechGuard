@@ -31,8 +31,4 @@ class AgentRegistry:
         return agent.execute(payload)
 
     def descriptors(self) -> tuple[AgentDescriptor, ...]:
-        return tuple(
-            self._agents[agent_id].descriptor
-            for agent_id in sorted(self._agents, key=str)
-        )
-
+        return tuple(self._agents[agent_id].descriptor for agent_id in sorted(self._agents, key=str))

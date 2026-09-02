@@ -6,18 +6,18 @@ interface PageTransitionProps {
   children: ReactNode;
   /**
    * Thời gian hiển thị logo reveal (ms).
-   * @default 350
+   * @default 120
    */
   revealDuration?: number;
   /**
    * Thời gian overlay biến mất (ms).
-   * @default 250
+   * @default 120
    */
   exitDuration?: number;
   /**
    * Thời gian chờ tối thiểu giữa các lần chuyển route (ms).
    * Tránh flicker khi navigate nhanh.
-   * @default 300
+   * @default 0
    */
   minTransitionInterval?: number;
 }
@@ -40,9 +40,9 @@ interface PageTransitionProps {
  */
 export default function PageTransition({
   children,
-  revealDuration = 350,
-  exitDuration = 250,
-  minTransitionInterval = 300,
+  revealDuration = 120,
+  exitDuration = 120,
+  minTransitionInterval = 0,
 }: PageTransitionProps) {
   const location = useLocation();
   const [phase, setPhase] = useState<"idle" | "revealing" | "exiting" | "done">(
@@ -97,15 +97,20 @@ export default function PageTransition({
       window.cancelAnimationFrame(resetFrame);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.search]);
+  }, [location.pathname]);
 
   function startTransition(isLoginCompletion = false) {
     // Authentication already waited on the OAuth popup and server verification.
     // Keep the brand cue, but do not add another noticeable pause before app use.
-    const currentRevealDuration = isLoginCompletion
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const currentRevealDuration = reduceMotion
+      ? 0
+      : isLoginCompletion
       ? Math.min(revealDuration, 120)
       : revealDuration;
-    const currentExitDuration = isLoginCompletion
+    const currentExitDuration = reduceMotion
+      ? 0
+      : isLoginCompletion
       ? Math.min(exitDuration, 100)
       : exitDuration;
     lastTransitionTime.current = Date.now();

@@ -51,6 +51,16 @@ function getStableDeviceId(): string | undefined {
   }
 }
 
+export function getRequiredLoginDeviceId(): string {
+  const deviceId = getStableDeviceId();
+  if (!deviceId) {
+    throw new LocationPermissionRequiredError(
+      "Trình duyệt đang chặn bộ nhớ thiết bị cần thiết để bảo vệ đăng nhập.",
+    );
+  }
+  return deviceId;
+}
+
 async function getCoarseLocation(): Promise<Pick<
   RiskClientContext,
   "geo_latitude" | "geo_longitude" | "geo_accuracy_m"
@@ -109,12 +119,7 @@ async function getRequiredCoarseLocation(): Promise<Required<Pick<
 
 /** Collect mandatory security context from the post-login location setup page. */
 export async function collectLoginRiskContext(): Promise<LoginRiskClientContext> {
-  const deviceId = getStableDeviceId();
-  if (!deviceId) {
-    throw new LocationPermissionRequiredError(
-      "Trình duyệt đang chặn bộ nhớ thiết bị cần thiết để bảo vệ đăng nhập.",
-    );
-  }
+  const deviceId = getRequiredLoginDeviceId();
   return { device_id: deviceId, ...(await getRequiredCoarseLocation()) };
 }
 

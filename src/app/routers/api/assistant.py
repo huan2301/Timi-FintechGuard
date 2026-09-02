@@ -43,9 +43,11 @@ from src.app.services.assistant_chat_history import (
     recent_context,
     save_exchange,
 )
+from src.app.services.guardian_alert_window import recent_guardian_alert_for_user
 from src.app.services.public_content_rag import format_context, retrieve_public_context
 from src.app.services.timi_assistant import (
     SENSITIVE_CREDENTIAL_ANSWER,
+    canonical_risk_coach_guided_question,
     contains_sensitive_credential,
     is_admin_policy_message,
     is_conversational_message,
@@ -181,7 +183,20 @@ def _load_verified_risk_coach_context(
         .order_by(desc(TransactionWarning.displayed_at))
         .limit(1)
     )
-    return _risk_coach_context_from_persisted_data(transaction, assessment, signals, warning)
+    context = _risk_coach_context_from_persisted_data(transaction, assessment, signals, warning)
+    recent_guardian_alert = recent_guardian_alert_for_user(
+        db,
+        user_id=user_id,
+        now=datetime.now(UTC),
+    )
+    if recent_guardian_alert is None:
+        return context
+    return context.model_copy(
+        update={
+            "guardian_alerted_at": recent_guardian_alert.alerted_at,
+            "guardian_alert_age_minutes": recent_guardian_alert.age_minutes,
+        }
+    )
 
 
 @router.post("/chat", response_model=AssistantChatResponse)
@@ -202,9 +217,7 @@ def chat_with_timi(
     # actions and transfer-draft mutations.
     # Conversational closing phrases are intentionally context-sensitive: let
     # Chat Support read the recent turns instead of replaying a cached answer.
-    semantic_question = is_semantic_product_question(payload.message) or is_conversational_message(
-        payload.message
-    )
+    semantic_question = is_semantic_product_question(payload.message) or is_conversational_message(payload.message)
     try:
         history = recent_context(
             db,
@@ -296,12 +309,16 @@ def chat_with_timi(
 
     # Admin safety wording is server-owned and may have changed since an old
     # cached transfer-routing answer was stored. Never replay that stale pair.
-    cached = None if is_admin_policy_message(payload.message) or semantic_question else find_cached_exchange(
-        db,
-        user_id=current_user.id,
-        message=payload.message,
-        settings=settings,
-        now=now,
+    cached = (
+        None
+        if is_admin_policy_message(payload.message) or semantic_question
+        else find_cached_exchange(
+            db,
+            user_id=current_user.id,
+            message=payload.message,
+            settings=settings,
+            now=now,
+        )
     )
     if cached is not None:
         mark_exchange_reused(cached, now=now)
@@ -316,9 +333,7 @@ def chat_with_timi(
         )
 
     try:
-        knowledge_context = format_context(
-            retrieve_public_context(db, payload.message)
-        )
+        knowledge_context = format_context(retrieve_public_context(db, payload.message))
     except Exception:
         # RAG is an evidence enhancement, never a reason to take Chat Support
         # offline when the embedding provider or index is unavailable.
@@ -402,9 +417,10 @@ def coach_transaction_risk(
     # The selected suggestion is a conversational aid, not free-form client
     # context. Only pass it through when it exactly matches a question this
     # server generated from the persisted warning evidence.
-    guided_question = (payload.guided_question or "").strip()
-    if guided_question not in risk_coach_questions(safe_context):
-        guided_question = ""
+    guided_question = canonical_risk_coach_guided_question(
+        safe_context,
+        payload.guided_question or "",
+    )
 
     try:
         result = get_multi_agent_supervisor().dispatch(
@@ -451,9 +467,7 @@ def get_timi_chat_history(
     now = datetime.now(UTC)
     prune_expired_exchanges(db, user_id=current_user.id, now=now)
     db.commit()
-    return AssistantChatHistoryResponse(
-        items=list_history(db, user_id=current_user.id, limit=limit)
-    )
+    return AssistantChatHistoryResponse(items=list_history(db, user_id=current_user.id, limit=limit))
 
 
 @router.delete("/history", status_code=status.HTTP_204_NO_CONTENT)

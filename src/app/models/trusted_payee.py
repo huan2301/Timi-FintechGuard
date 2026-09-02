@@ -15,13 +15,9 @@ class TrustedPayee(Base, TimestampMixin):
     """
 
     __tablename__ = "trusted_payees"
-    __table_args__ = (
-        UniqueConstraint("user_id", "payee_account", name="uq_trusted_user_payee"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "payee_account", name="uq_trusted_user_payee"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )

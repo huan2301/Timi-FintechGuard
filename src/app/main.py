@@ -49,7 +49,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="FintechGuard API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="FintechGuard API",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url=None if settings.app_env == "production" else "/docs",
+    redoc_url=None if settings.app_env == "production" else "/redoc",
+    openapi_url=None if settings.app_env == "production" else "/openapi.json",
+)
 media_directory = settings.project_root / "data" / "uploads"
 media_directory.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=media_directory), name="media")
@@ -60,7 +67,37 @@ async def add_browser_security_headers(request, call_next):
     """Keep OAuth popup communication compatible in the single-service deploy."""
     response = await call_next(request)
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
-    response.headers.setdefault("Referrer-Policy", "no-referrer-when-downgrade")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(self), microphone=(self), geolocation=(self)",
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "; ".join(
+            [
+                "default-src 'self'",
+                "base-uri 'self'",
+                "object-src 'none'",
+                "frame-ancestors 'none'",
+                "script-src 'self' https://accounts.google.com",
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+                "font-src 'self' data: https://fonts.gstatic.com",
+                "img-src 'self' data: blob: https:",
+                "media-src 'self' blob:",
+                "connect-src 'self' https: wss:",
+                "frame-src https://accounts.google.com",
+                "form-action 'self'",
+            ]
+        ),
+    )
+    if settings.app_env == "production":
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
     return response
 
 
@@ -98,10 +135,7 @@ def frontend_response(path: str = ""):
         raise HTTPException(status_code=404, detail="Not Found")
 
     requested_file = (frontend_directory / path).resolve()
-    if (
-        requested_file.is_file()
-        and frontend_directory.resolve() in requested_file.parents
-    ):
+    if requested_file.is_file() and frontend_directory.resolve() in requested_file.parents:
         return FileResponse(requested_file)
     return FileResponse(frontend_index)
 
@@ -120,5 +154,3 @@ async def frontend_fallback(path: str):
     if path.startswith(("api/", "media/")):
         raise HTTPException(status_code=404, detail="Not Found")
     return frontend_response(path)
-
-

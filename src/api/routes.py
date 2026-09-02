@@ -30,6 +30,7 @@ router = APIRouter()
 
 # ── Chat (route cũ — giữ lại để không break test hiện có) ──────────────────
 
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, req: Request) -> ChatResponse:
     """Chat với AI agent."""
@@ -49,6 +50,7 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
 
 # ── Transaction Analysis ────────────────────────────────────────────────────
 
+
 @router.post("/transactions/analyze", response_model=TransactionAnalyzeResponse)
 async def analyze_transaction(
     request: TransactionRequest,
@@ -64,9 +66,11 @@ async def analyze_transaction(
         agent = req.app.state.agent
 
         # Truyền transaction vào state — tên field "transaction" khớp AgentState
-        result = await agent.ainvoke({
-            "transaction": request.model_dump(),
-        })
+        result = await agent.ainvoke(
+            {
+                "transaction": request.model_dump(),
+            }
+        )
 
         # Đảm bảo có đủ fields bắt buộc, dùng default an toàn nếu agent chưa đủ logic
         warning_level = result.get("warning_level", "safe")
@@ -105,6 +109,7 @@ async def analyze_transaction(
 
 
 # ── Status ──────────────────────────────────────────────────────────────────
+
 
 @router.get("/status")
 async def agent_status():

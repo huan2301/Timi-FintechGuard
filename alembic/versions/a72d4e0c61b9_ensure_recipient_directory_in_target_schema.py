@@ -8,9 +8,8 @@ Create Date: 2026-08-10
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
-from sqlalchemy.dialects import postgresql
 
+from alembic import op
 from src.app.config import get_settings
 
 revision: str = "a72d4e0c61b9"
@@ -22,47 +21,24 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Create the directory in DATABASE_SCHEMA, not a visible fallback schema."""
     schema = get_settings().database_schema
-    bind = op.get_bind()
-    table_exists = bind.execute(
+    # DATABASE_SCHEMA is regex-validated by Settings. IF NOT EXISTS keeps this
+    # repair revision safe online and avoids database inspection in --sql mode.
+    op.execute(
         sa.text(
-            """
-            SELECT EXISTS (
-                SELECT 1
-                FROM information_schema.tables
-                WHERE table_schema = :schema AND table_name = 'recipient_directory'
+            f"""
+            CREATE TABLE IF NOT EXISTS {schema}.recipient_directory (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                account_number VARCHAR(64) NOT NULL,
+                bank_code VARCHAR(32) NOT NULL,
+                account_name VARCHAR(255) NOT NULL,
+                source VARCHAR(100) NOT NULL DEFAULT 'internal',
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (account_number, bank_code)
             )
             """
-        ),
-        {"schema": schema},
-    ).scalar()
-    if table_exists:
-        return
-
-    op.create_table(
-        "recipient_directory",
-        sa.Column(
-            "id",
-            postgresql.UUID(as_uuid=True),
-            primary_key=True,
-            server_default=sa.text("uuid_generate_v4()"),
-        ),
-        sa.Column("account_number", sa.String(64), nullable=False),
-        sa.Column("bank_code", sa.String(32), nullable=False),
-        sa.Column("account_name", sa.String(255), nullable=False),
-        sa.Column(
-            "source", sa.String(100), nullable=False, server_default=sa.text("'internal'")
-        ),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
-        ),
-        sa.UniqueConstraint(
-            "account_number", "bank_code", name="uq_recipient_directory_account_bank"
-        ),
-        schema=schema,
+        )
     )
 
 

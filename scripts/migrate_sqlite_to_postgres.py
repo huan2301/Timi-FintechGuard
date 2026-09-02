@@ -132,9 +132,7 @@ def load_rows(
     exclude_test_data: bool,
 ) -> tuple[list[dict[str, Any]], int]:
     source_table = reflect_table(source_engine, table_name)
-    target_columns = {
-        column["name"] for column in inspect(target_engine).get_columns(table_name)
-    }
+    target_columns = {column["name"] for column in inspect(target_engine).get_columns(table_name)}
     with source_engine.connect() as connection:
         raw_rows = [dict(row) for row in connection.execute(select(source_table)).mappings()]
     excluded = 0
@@ -192,9 +190,7 @@ def verify_primary_keys(
     with target_engine.connect() as connection:
         for key_batch in batched([{primary_key: value} for value in expected], 500):
             values = [item[primary_key] for item in key_batch]
-            result = connection.execute(
-                select(table.c[primary_key]).where(table.c[primary_key].in_(values))
-            )
+            result = connection.execute(select(table.c[primary_key]).where(table.c[primary_key].in_(values)))
             found.update(result.scalars())
     return len(expected), len(found)
 
@@ -214,8 +210,7 @@ def main() -> int:
     target_url = normalize_target_url(target_url)
     if not target_url.startswith("postgresql+psycopg://"):
         print(
-            "ERROR: target must be a PostgreSQL/Supabase URL using psycopg. "
-            "Set DATABASE_URL or pass --target-url.",
+            "ERROR: target must be a PostgreSQL/Supabase URL using psycopg. Set DATABASE_URL or pass --target-url.",
             file=sys.stderr,
         )
         return 2
@@ -279,8 +274,7 @@ def main() -> int:
     except IntegrityError as error:
         original = getattr(error, "orig", error)
         print(
-            "ERROR: migration data violates the Supabase schema. "
-            f"No partial batch was committed. Detail: {original}",
+            f"ERROR: migration data violates the Supabase schema. No partial batch was committed. Detail: {original}",
             file=sys.stderr,
         )
         return 2

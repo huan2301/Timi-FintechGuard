@@ -24,9 +24,7 @@ class UserConsent(Base):
         UniqueConstraint("user_id", "consent_type", "consent_version", name="uq_user_consent_version"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
@@ -37,18 +35,14 @@ class UserConsent(Base):
     withdrawn_at: Mapped[datetime | None] = mapped_column(nullable=True)
     ip_address: Mapped[str | None] = mapped_column(INET, nullable=True)
 
-    user: Mapped["User"] = relationship(back_populates="consents")
+    user: Mapped[User] = relationship(back_populates="consents")
 
 
 class DataRetentionPolicy(Base, TimestampMixin):
     __tablename__ = "data_retention_policies"
-    __table_args__ = (
-        CheckConstraint("retention_days > 0", name="ck_retention_days_positive"),
-    )
+    __table_args__ = (CheckConstraint("retention_days > 0", name="ck_retention_days_positive"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     data_category: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     retention_days: Mapped[int] = mapped_column(Integer, nullable=False)
     anonymize_after_days: Mapped[int | None] = mapped_column(Integer, nullable=True)

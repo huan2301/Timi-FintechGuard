@@ -155,9 +155,7 @@ def test_capability_questions_stay_on_chat_support_instead_of_navigation(message
         ("Tôi muốn về trang chủ", "/dashboard"),
     ],
 )
-def test_task_agent_navigates_only_to_supported_user_routes(
-    message: str, expected_route: str
-) -> None:
+def test_task_agent_navigates_only_to_supported_user_routes(message: str, expected_route: str) -> None:
     result = route_task(message, AssistantTaskState())
 
     assert result.handled
@@ -172,9 +170,7 @@ def test_task_agent_gives_a_specific_next_step_for_avatar_change() -> None:
     assert result.handled
     assert result.action is not None
     assert result.action.route == "/me"
-    assert result.answer == (
-        "Đã mở Hồ sơ. Bấm biểu tượng máy ảnh trên ảnh đại diện để chọn và thay ảnh mới."
-    )
+    assert result.answer == ("Đã mở Hồ sơ. Bấm biểu tượng máy ảnh trên ảnh đại diện để chọn và thay ảnh mới.")
 
 
 def test_task_agent_does_not_reopen_completed_face_enrollment() -> None:
@@ -219,9 +215,7 @@ def test_task_agent_routes_completed_pin_setup_to_pin_update() -> None:
         ("Về trang tổng quan", "xem số dư"),
     ],
 )
-def test_task_agent_explains_the_next_step_for_every_navigation_route(
-    message: str, expected_next_step: str
-) -> None:
+def test_task_agent_explains_the_next_step_for_every_navigation_route(message: str, expected_next_step: str) -> None:
     result = route_task(message, AssistantTaskState())
 
     assert result.handled
@@ -300,9 +294,7 @@ def test_transfer_guidance_question_clears_an_unfinished_transfer_draft() -> Non
     started = route_task("Tôi muốn chuyển tiền", AssistantTaskState())
     assert started.task_state.task == "transfer"
 
-    question = route_task(
-        "Ngày mai Huân sẽ chuyển tiền cho Lý đạt như nào", started.task_state
-    )
+    question = route_task("Ngày mai Huân sẽ chuyển tiền cho Lý đạt như nào", started.task_state)
 
     assert not question.handled
     assert question.action is None
@@ -377,8 +369,7 @@ def test_task_agent_uses_contextual_route_only_after_rules_do_not_handle(monkeyp
     assert result.action is not None
     assert result.action.route == "/transfer"
     assert result.answer == (
-        "Đã mở trang Chuyển tiền. Nhập số tài khoản, ngân hàng và số tiền; "
-        "kiểm tra lại trước khi xác nhận."
+        "Đã mở trang Chuyển tiền. Nhập số tài khoản, ngân hàng và số tiền; kiểm tra lại trước khi xác nhận."
     )
 
 
@@ -389,9 +380,7 @@ def test_task_agent_keeps_known_route_token_free(monkeypatch) -> None:
         lambda _message: pytest.fail("Known route must not call Groq"),
     )
 
-    result = TaskNavigationAgent().execute(
-        TaskNavigationTask(message="Về trang chủ", task_state=AssistantTaskState())
-    )
+    result = TaskNavigationAgent().execute(TaskNavigationTask(message="Về trang chủ", task_state=AssistantTaskState()))
 
     assert result.action is not None
     assert result.action.route == "/dashboard"

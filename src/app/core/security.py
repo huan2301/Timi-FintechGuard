@@ -1,29 +1,71 @@
-"""Password hashing and JWT helpers shared by all active API routers."""
+"""Password hashing and purpose-bound JWT helpers for active API routers."""
 
-from datetime import datetime, timedelta, timezone
+import hashlib
+import re
+import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 
 from src.app.config import get_settings
+from src.app.core.policies import DEVICE_LOGIN_CHALLENGE_TTL
+
+_PASSWORD_HASH_PREFIX = "bcrypt-sha256$"
+
+
+def _password_digest(password: str) -> bytes:
+    """Pre-hash so bcrypt never silently truncates a UTF-8 password."""
+    return hashlib.sha256(password.encode("utf-8")).hexdigest().encode("ascii")
 
 
 def hash_password(password: str) -> str:
-    """Hash passwords safely while respecting bcrypt's 72-byte limit."""
-    return bcrypt.hashpw(
-        password.encode("utf-8")[:72], bcrypt.gensalt()
-    ).decode("utf-8")
+    """Hash a full password while keeping compatibility with bcrypt storage."""
+    hashed = bcrypt.hashpw(_password_digest(password), bcrypt.gensalt()).decode("utf-8")
+    return f"{_PASSWORD_HASH_PREFIX}{hashed}"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8")[:72], hashed_password.encode("utf-8")
-    )
+    try:
+        if hashed_password.startswith(_PASSWORD_HASH_PREFIX):
+            bcrypt_hash = hashed_password.removeprefix(_PASSWORD_HASH_PREFIX)
+            return bcrypt.checkpw(_password_digest(plain_password), bcrypt_hash.encode("utf-8"))
+        # Legacy rows used raw bcrypt input. Retain read compatibility so users
+        # can log in and migrate naturally on their next password change/reset.
+        return bcrypt.checkpw(plain_password.encode("utf-8")[:72], hashed_password.encode("utf-8"))
+    except (TypeError, ValueError):
+        return False
+
+
+def validate_password_strength(password: str) -> str:
+    """Apply the same password policy to registration, change and reset."""
+    missing: list[str] = []
+    if len(password) < 8:
+        missing.append("ít nhất 8 ký tự")
+    if len(password) > 128:
+        missing.append("không quá 128 ký tự")
+    if not re.search(r"[A-Z]", password):
+        missing.append("1 chữ viết hoa")
+    if not re.search(r"[a-z]", password):
+        missing.append("1 chữ viết thường")
+    if not re.search(r"\d", password):
+        missing.append("1 chữ số")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        missing.append("1 ký tự đặc biệt")
+    if missing:
+        raise ValueError(f"Mật khẩu còn thiếu: {', '.join(missing)}")
+    return password
 
 
 def create_access_token(
-    subject: str | dict[str, Any], role: str | None = None, expires_delta: timedelta | None = None
+    subject: str | dict[str, Any],
+    role: str | None = None,
+    expires_delta: timedelta | None = None,
+    *,
+    token_version: int = 0,
+    location_confirmed: bool = True,
 ) -> str:
     """Create a signed JWT.
 
@@ -34,11 +76,102 @@ def create_access_token(
     payload = dict(subject) if isinstance(subject, dict) else {"sub": subject}
     if role is not None:
         payload["role"] = role
-    expires_at = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
-    )
+    payload.setdefault("token_version", token_version)
+    payload.setdefault("location_confirmed", location_confirmed)
+    payload.setdefault("jti", uuid.uuid4().hex)
+    expires_at = datetime.now(UTC) + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
     payload["exp"] = expires_at
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def create_login_location_token(
+    *,
+    user_id: str,
+    role: str,
+    token_version: int,
+    remember_me: bool,
+    device_hash: str,
+) -> str:
+    """Issue a credential that can only complete post-login location setup."""
+    settings = get_settings()
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "role": role,
+            "purpose": "login_location",
+            "token_version": token_version,
+            "remember_me": remember_me,
+            "device_hash": device_hash,
+            "jti": uuid.uuid4().hex,
+            "exp": datetime.now(UTC) + timedelta(minutes=10),
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def create_device_login_verification_token(
+    *,
+    user_id: str,
+    verification_id: str,
+    token_version: int,
+) -> str:
+    """Create a proof that identifies one server-side new-device OTP challenge."""
+    settings = get_settings()
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "verification_id": verification_id,
+            "purpose": "device_login_verification",
+            "token_version": token_version,
+            "jti": uuid.uuid4().hex,
+            "exp": datetime.now(UTC) + DEVICE_LOGIN_CHALLENGE_TTL,
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_device_login_verification_token(token: str) -> dict[str, Any]:
+    """Validate a purpose-bound new-device challenge without authenticating it."""
+    payload = decode_access_token(token)
+    token_version = payload.get("token_version")
+    if payload.get("purpose") != "device_login_verification" or type(token_version) is not int:
+        raise ValueError("Invalid device login verification token")
+    try:
+        uuid.UUID(str(payload["sub"]))
+        uuid.UUID(str(payload["verification_id"]))
+    except (KeyError, ValueError):
+        raise ValueError("Device login verification token is malformed") from None
+    return payload
+
+
+def create_card_action_token(*, user_id: str, token_version: int) -> str:
+    """Create a short-lived proof that the transaction PIN was verified."""
+    settings = get_settings()
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "purpose": "card_create",
+            "token_version": token_version,
+            "jti": uuid.uuid4().hex,
+            "exp": datetime.now(UTC) + timedelta(minutes=3),
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_card_action_token(token: str, *, user_id: str, token_version: int) -> None:
+    payload = decode_access_token(token)
+    payload_version = payload.get("token_version")
+    if (
+        payload.get("purpose") != "card_create"
+        or payload.get("sub") != user_id
+        or type(payload_version) is not int
+        or payload_version != token_version
+    ):
+        raise ValueError("Card action token is invalid")
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
@@ -50,7 +183,12 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 
 def create_google_phone_completion_token(
-    *, google_subject: str, email: str, full_name: str, remember_me: bool
+    *,
+    google_subject: str,
+    email: str,
+    full_name: str,
+    remember_me: bool,
+    device_hash: str,
 ) -> str:
     """Create a short-lived, single-purpose proof for Google phone collection.
 
@@ -66,7 +204,8 @@ def create_google_phone_completion_token(
             "email": email,
             "full_name": full_name,
             "remember_me": remember_me,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+            "device_hash": device_hash,
+            "exp": datetime.now(UTC) + timedelta(minutes=10),
         },
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
@@ -83,17 +222,16 @@ def decode_google_phone_completion_token(token: str) -> dict[str, Any]:
         raise ValueError("Google phone completion token is missing profile data")
     if not isinstance(payload.get("remember_me"), bool):
         raise ValueError("Google phone completion token is malformed")
+    device_hash = payload.get("device_hash")
+    if not isinstance(device_hash, str) or re.fullmatch(r"[0-9a-f]{64}", device_hash) is None:
+        raise ValueError("Google phone completion token has an invalid device")
     return payload
 
 
-def create_recipient_lookup_token(
-    *, user_id: str, account_number: str, bank_code: str, account_name: str
-) -> str:
+def create_recipient_lookup_token(*, user_id: str, account_number: str, bank_code: str, account_name: str) -> str:
     """Create a short-lived proof that a recipient name came from internal lookup."""
     settings = get_settings()
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        seconds=settings.recipient_lookup_token_expire_seconds
-    )
+    expires_at = datetime.now(UTC) + timedelta(seconds=settings.recipient_lookup_token_expire_seconds)
     return jwt.encode(
         {
             "sub": user_id,
@@ -130,7 +268,7 @@ def create_face_verification_token(
     payload: dict[str, Any] = {
         "sub": user_id,
         "purpose": "face_verification",
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=3),
+        "exp": datetime.now(UTC) + timedelta(minutes=3),
     }
     if transaction_id:
         payload["transaction_id"] = transaction_id

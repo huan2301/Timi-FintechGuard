@@ -34,41 +34,29 @@ class ScamGuardianSession(Base, TimestampMixin):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    started_at: Mapped[datetime] = mapped_column(
-        server_default="now()", nullable=False
-    )
+    started_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
     max_risk_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     final_risk_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    risk_level: Mapped[str] = mapped_column(
-        String(20), default="safe", nullable=False
-    )
+    risk_level: Mapped[str] = mapped_column(String(20), default="safe", nullable=False)
     scam_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
     # Last action selected by the Guardian agent. This is the only value the
     # transaction API uses for enforcement; it does not derive a threshold
     # from max_risk_score.
-    agent_action: Mapped[str] = mapped_column(
-        String(20), default="CONTINUE", nullable=False
-    )
+    agent_action: Mapped[str] = mapped_column(String(20), default="CONTINUE", nullable=False)
     final_recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)
-    retain_transcript: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    retain_transcript: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class ScamConversationSegment(Base):
     __tablename__ = "conversation_segments"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("scam_sessions.id", ondelete="CASCADE"),
@@ -80,17 +68,13 @@ class ScamConversationSegment(Base):
     end_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     confidence: Mapped[float | None] = mapped_column(nullable=True)
     source: Mapped[str] = mapped_column(String(30), default="browser", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        server_default="now()", nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)
 
 
 class ScamSignal(Base):
     __tablename__ = "scam_signals"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("scam_sessions.id", ondelete="CASCADE"),
@@ -105,9 +89,7 @@ class ScamSignal(Base):
     confidence: Mapped[float] = mapped_column(nullable=False, default=1.0)
     weight: Mapped[int] = mapped_column(Integer, nullable=False)
     evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        server_default="now()", nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)
 
 
 class ScamRiskEvent(Base):
@@ -119,9 +101,7 @@ class ScamRiskEvent(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("scam_sessions.id", ondelete="CASCADE"),
@@ -134,16 +114,10 @@ class ScamRiskEvent(Base):
     )
     risk_score: Mapped[int] = mapped_column(Integer, nullable=False)
     risk_level: Mapped[str] = mapped_column(String(20), nullable=False)
-    recommended_action: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="CONTINUE"
-    )
+    recommended_action: Mapped[str] = mapped_column(String(20), nullable=False, default="CONTINUE")
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    signals: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        server_default="now()", nullable=False
-    )
+    signals: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)
 
 
 class ScamAlert(Base):
@@ -151,9 +125,7 @@ class ScamAlert(Base):
 
     __tablename__ = "scam_alerts"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("scam_sessions.id", ondelete="CASCADE"),
@@ -164,6 +136,4 @@ class ScamAlert(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     delivered_at: Mapped[datetime | None] = mapped_column(nullable=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        server_default="now()", nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)

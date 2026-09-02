@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
-
 # ── Chat (schema cũ, giữ lại để không break test hiện có) ──────────────────
+
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
@@ -14,8 +14,10 @@ class ChatResponse(BaseModel):
 
 # ── Transaction Analysis ────────────────────────────────────────────────────
 
+
 class TransactionRequest(BaseModel):
     """Dữ liệu giao dịch cần phân tích."""
+
     sender: str = Field(..., min_length=1, max_length=200, description="Người gửi")
     receiver: str = Field(..., min_length=1, max_length=200, description="Người nhận")
     receiver_account: str = Field(..., min_length=1, max_length=50, description="Số tài khoản người nhận")
@@ -28,6 +30,7 @@ class TransactionAnalyzeResponse(BaseModel):
 
     CHÚ Ý: KHÔNG bao gồm toàn bộ object Transaction hoặc receiver_account đầy đủ.
     """
+
     warning_level: str = Field(..., description="Mức cảnh báo: safe | suspicious | high_risk")
     explanation: str = Field(..., description="Giải thích nguyên nhân cảnh báo")
     risk_score: float = Field(..., ge=0.0, le=1.0, description="Điểm rủi ro từ 0.0 đến 1.0")

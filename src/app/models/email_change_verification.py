@@ -14,7 +14,9 @@ class EmailChangeVerification(Base):
     __tablename__ = "email_change_verifications"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
     current_email: Mapped[str] = mapped_column(String(255), nullable=False)
     new_email: Mapped[str] = mapped_column(String(255), nullable=False)
     old_otp_hash: Mapped[str] = mapped_column(String(64), nullable=False)

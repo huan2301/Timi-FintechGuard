@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { assistantApi, type AssistantChatTurn, type AssistantTaskState } from "@/services/api/assistant";
 import TimiChibi from "@/components/ai/TimiChibi";
 import { useScamGuardian } from "@/components/guardian/ScamGuardianProvider";
+import type { GuardianRiskEvent } from "@/services/api/guardian";
 import { useAuthStore } from "@/stores/authStore";
 import { useTimiAssistantStore } from "@/stores/timiAssistantStore";
 
@@ -104,8 +105,66 @@ function renderInlineLines(lines: string[]): ReactNode[] {
   ]);
 }
 
+function normaliseAssistantContent(content: string): string {
+  const cleaned = content
+    .replace(/\r\n?/g, "\n")
+    // Some providers use a Markdown backslash to force a line break. It is
+    // not useful in the chat bubble and was previously rendered literally.
+    .replace(/[ \t]*\\+[ \t]*(?=\n|$)/g, "")
+    // Be defensive if a provider returns the characters "\\n" instead of a
+    // real newline.
+    .replace(/\\n/g, "\n");
+
+  return cleaned
+    .split("\n")
+    .flatMap((line) => {
+      const inlineSteps = line.match(
+        /^(.*?(?:việc nên làm|bạn nên làm|cách xử lý|các bước)\s*:)\s*(\d+[.)]\s+.+)$/iu,
+      );
+      if (!inlineSteps) return [line];
+      return [
+        inlineSteps[1],
+        ...inlineSteps[2].split(/\s+(?=\d+[.)]\s+)/),
+      ];
+    })
+    .join("\n");
+}
+
+const GUARDIAN_SIGNAL_COPY: Record<string, string> = {
+  otp_request: "Người gọi yêu cầu mã OTP hoặc mã xác thực.",
+  credential_social_engineering: "Người gọi yêu cầu thông tin bảo mật như PIN hoặc mật khẩu.",
+  money_transfer_request: "Người gọi gây áp lực để bạn chuyển tiền.",
+  safe_account_scam: "Người gọi nhắc đến “tài khoản an toàn/tạm giữ” để yêu cầu chuyển tiền.",
+  remote_access_request: "Người gọi yêu cầu cài ứng dụng hoặc cho phép điều khiển thiết bị từ xa.",
+  screen_sharing_request: "Người gọi yêu cầu chia sẻ màn hình điện thoại.",
+  bank_impersonation: "Người gọi tự xưng là nhân viên hoặc bộ phận bảo mật ngân hàng.",
+  authority_impersonation: "Người gọi tự xưng là cán bộ/cơ quan có thẩm quyền.",
+  account_lock_threat: "Người gọi đe dọa khóa hoặc phong tỏa tài khoản.",
+  prevent_external_verification: "Người gọi ngăn bạn tự gọi tổng đài hoặc kiểm tra qua kênh chính thức.",
+  urgency: "Người gọi thúc giục bạn phải làm ngay.",
+  secrecy_request: "Người gọi yêu cầu bạn giữ bí mật hoặc không hỏi người khác.",
+};
+
+function guardianAlertMessage(risk: GuardianRiskEvent): string {
+  const reasons = [...new Set(
+    risk.signals
+      .map((signal) => GUARDIAN_SIGNAL_COPY[signal.type])
+      .filter((value): value is string => Boolean(value)),
+  )].slice(0, 2);
+  const reasonLines = reasons.length > 0
+    ? reasons.map((reason) => `• ${reason}`).join("\n")
+    : "• Cuộc gọi có yêu cầu thao tác bảo mật hoặc chuyển tiền bất thường.";
+
+  return [
+    "🚨 Timi khuyên bạn dừng lại vì cuộc gọi này có dấu hiệu lừa đảo nghiêm trọng.",
+    `Mức cảnh báo hiện tại: ${risk.risk_score}/100.`,
+    `Timi nhận thấy:\n${reasonLines}`,
+    "Bạn nên làm ngay:\n• Dừng cuộc gọi. Không chuyển tiền, không đọc OTP và không cung cấp PIN/mật khẩu.\n• Nếu cần kiểm tra, tự gọi số tổng đài chính thức hoặc liên hệ người quen qua số bạn đã lưu.",
+  ].join("\n\n");
+}
+
 function AssistantRichText({ content }: { content: string }) {
-  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const lines = normaliseAssistantContent(content).split("\n");
   const blocks: ReactNode[] = [];
   let paragraph: string[] = [];
   let unordered: string[] = [];
@@ -578,17 +637,12 @@ export default function MiniTimiAssistant() {
     if (!criticalAlert) return;
     if (handledGuardianAlertRef.current === criticalAlert) return;
     handledGuardianAlertRef.current = criticalAlert;
-    const message = [
-      "🚨 Timi vừa phát hiện nguy cơ lừa đảo rất cao trong cuộc gọi.",
-      `Mức nguy cơ hiện tại: ${risk.risk_score}/100.`,
-      risk.explanation,
-      "Bạn hãy dừng cuộc gọi, không chuyển tiền và không cung cấp OTP/PIN. Nếu cần giao dịch, hãy tự gọi lại ngân hàng bằng số chính thức.",
-    ].join("\n\n");
+    const message = guardianAlertMessage(risk);
     setChatMessages((current) => [...current, { id: `guardian-alert-${Date.now()}`, role: "assistant", content: message }]);
     setOpen(true);
     setWidgetPosition(null);
     setChatOpen(true);
-  }, [criticalAlert, risk.explanation, risk.risk_score]);
+  }, [criticalAlert, risk]);
 
   if (activity.status === "analyzing" && !criticalAlert) return null;
 

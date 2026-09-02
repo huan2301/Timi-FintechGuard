@@ -25,15 +25,11 @@ class AgentExecutionEvent(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     operation: Mapped[str] = mapped_column(String(80), nullable=False, default="dispatch")
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     # Store only the exception class, never a provider response or user input.
     failure_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    occurred_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
-    )
+    occurred_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)

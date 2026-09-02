@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import {
   Shield,
   ArrowRight,
-  ArrowLeft,
   Zap,
   KeyRound,
   Smartphone,
@@ -32,61 +31,55 @@ import { axiosInstance } from "@/services/api/axios";
 /* ------------------------------------------------------------------ */
 
 const trustRow = [
-  { icon: Users, title: "Hàng triệu người tin dùng", desc: "Timi xử lý hàng trăm ngàn giao dịch mỗi ngày trên khắp Việt Nam", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/41.jpg" },
-  { icon: Star, title: "Đánh giá 4.8/5 sao", desc: "Từ hơn 200.000 lượt đánh giá của người dùng trên App Store & Google Play", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/42.jpg" },
-  { icon: Headphones, title: "Hỗ trợ 24/7", desc: "Đội ngũ chuyên gia sẵn sàng hỗ trợ bạn mọi lúc qua chat, điện thoại", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/43.png" },
+  { icon: Users, title: "Bản demo minh bạch", desc: "Dữ liệu tài chính và giao dịch ngoài Timi được ghi rõ là mô phỏng", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/41.jpg" },
+  { icon: Star, title: "Giải thích rủi ro", desc: "Hiển thị tín hiệu và lý do cảnh báo trước khi bạn quyết định", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/42.jpg" },
+  { icon: Headphones, title: "Trung tâm trợ giúp", desc: "Tài liệu hướng dẫn và trợ lý trong ứng dụng cho các luồng đang hỗ trợ", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/43.png" },
 ];
 
 const protectionRow = [
-  { icon: ShieldCheck, title: "Đội ngũ chống lừa đảo AI", desc: "Giám sát và phân tích rủi ro theo thời gian thực", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/44.png" },
+  { icon: ShieldCheck, title: "Phân tích chống lừa đảo", desc: "Đánh giá tín hiệu rủi ro trước bước xác nhận giao dịch", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/44.png" },
   { icon: KeyRound, title: "Xác thực 2 lớp", desc: "Bảo vệ tài khoản bằng sinh trắc học và OTP", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/45.jpg" },
-  { icon: Building2, title: "Hợp tác cùng tổ chức uy tín", desc: "Liên kết dữ liệu cảnh báo với ngân hàng và cơ quan an ninh mạng", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/46.jpg" },
+  { icon: Building2, title: "Kiểm tra dữ liệu nội bộ", desc: "Đối chiếu danh bạ người nhận, blacklist và lịch sử cảnh báo của hệ thống", image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/46.jpg" },
 ];
 
-const testimonials = [
+const exampleScenarios = [
   {
-    flag: "🇻🇳",
     quote:
-      "Timi giúp mình chuyển tiền cho gia đình ở quê chỉ trong vài giây, lại còn cảnh báo trước khi mình chuyển nhầm vào tài khoản lừa đảo.",
-    name: "Minh Anh",
+      "Khi chuyển tới người nhận mới, Timi hiển thị kết quả tra cứu và các tín hiệu đáng ngờ trước bước xác nhận.",
+    name: "Tra cứu người nhận",
     theme: "light",
-    image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/41.jpg",
   },
   {
-    flag: "🇻🇳",
     quote:
-      "Ứng dụng quản lý chi tiêu tự động, mình tiết kiệm được rõ rệt sau 3 tháng dùng Timi.",
-    name: "Quốc Huy",
+      "Nếu nội dung giao dịch có dấu hiệu rủi ro, hệ thống giải thích lý do để người dùng tự đưa ra quyết định.",
+    name: "Giải thích rủi ro",
     theme: "dark",
-    image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/42.jpg",
   },
   {
-    flag: "🇻🇳",
     quote:
-      "Cảnh báo AI Anti-Scam đã chặn một giao dịch mình suýt bị lừa. Cảm giác an tâm hơn hẳn.",
-    name: "Thu Trang",
+      "Guardian có thể gửi cảnh báo bảo mật trong ứng dụng; quyết định tiếp tục hay hủy vẫn thuộc về người dùng.",
+    name: "Cảnh báo chủ động",
     theme: "light",
-    image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/43.png",
   },
 ];
 
 const features = [
   {
     icon: ArrowRight,
-    title: "Chuyển tiền siêu tốc",
-    desc: "Chuyển tiền 24/7 đến mọi ngân hàng, chỉ cần số điện thoại",
+    title: "Chuyển tiền có kiểm soát",
+    desc: "Chuyển tiền giữa hai tài khoản Timi; liên ngân hàng được khóa cho tới khi có cổng quyết toán thật",
     image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/32.jpg",
   },
   {
     icon: CreditCard,
-    title: "Thanh toán mọi dịch vụ",
-    desc: "Hóa đơn điện nước, nạp điện thoại, vé xem phim... tất cả trong 1 chạm",
+    title: "Thẻ ảo mô phỏng",
+    desc: "Tạo và quản lý thẻ thử nghiệm với PIN xác nhận; không phải thẻ ngân hàng thật",
     image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/32.jpg",
   },
   {
     icon: Shield,
     title: "AI Anti-Scam",
-    desc: "Trí tuệ nhân tạo phân tích real-time, chặn giao dịch rủi ro trước khi xảy ra",
+    desc: "Trí tuệ nhân tạo phân tích tín hiệu và cảnh báo rủi ro trước khi bạn xác nhận",
     image: "https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/32.jpg",
   },
 ];
@@ -107,7 +100,6 @@ export default function HomePage() {
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuthStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [, setSlide] = useState(0);
   const [activeBanner, setActiveBanner] = useState(0);
   const managedQuery = useQuery({
     queryKey: ["public-content", "home"],
@@ -131,11 +123,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-white font-[Inter]">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap');
-        .font-display { font-family: 'Space Grotesk', sans-serif; }
-      `}</style>
-
       {/* ============================= NAV ============================= */}
       <nav className="sticky top-0 z-50 bg-white border-b border-slate-100 w-full">
         <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-20">
@@ -321,10 +308,10 @@ export default function HomePage() {
                 GIỮ TIỀN AN TOÀN.<br />CHI TIÊU DỄ DÀNG.
               </h1>
               <p className="text-lg text-slate-600 leading-relaxed max-w-md">
-                Timi là ví điện tử được bảo vệ bởi AI Anti-Scam — chuyển tiền, thanh toán và quản lý tài chính, tất cả trong một chạm.
+                Timi là bản demo ví điện tử có AI Anti-Scam — hỗ trợ chuyển tiền nội bộ, QR, lịch sử và giải thích rủi ro trong một trải nghiệm thống nhất.
               </p>
               <button onClick={() => navigate("/register")} className="px-8 py-4 bg-[#4F6BFF] text-white font-bold rounded-2xl hover:bg-[#3D53E8] hover:scale-[1.02] transition-all inline-flex items-center gap-2">
-                Mở tài khoản miễn phí
+                Tạo tài khoản thử nghiệm
                 <ArrowRight className="w-5 h-5" />
               </button>
             </div>
@@ -381,7 +368,7 @@ export default function HomePage() {
                 LÀM NẢN LÒNG<br />KẺ GIAN
               </h2>
               <p className="text-slate-600 text-lg leading-relaxed max-w-md mb-6">
-                Mỗi tháng, hệ thống AI Anti-Scam của Timi quét hàng triệu giao dịch để giữ an toàn cho tiền của bạn.
+                Trong bản demo, AI Anti-Scam phân tích từng yêu cầu chuyển tiền để giải thích tín hiệu đáng ngờ trước khi bạn xác nhận.
               </p>
               <button onClick={() => document.getElementById("security")?.scrollIntoView({ behavior: "smooth" })} className="text-[#4F6BFF] font-bold underline underline-offset-4 hover:text-[#4F6BFF] transition-colors">
                 Xem cách chúng tôi bảo vệ bạn
@@ -407,31 +394,20 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ===================== TESTIMONIALS (xanh) ===================== */}
+      {/* ===================== EXAMPLE SCENARIOS (xanh) ===================== */}
       <section className="w-full bg-[#F3F5FF]">
         <div className="w-full px-6 lg:px-12 xl:px-20 py-16 lg:py-20">
-          <div className="flex items-center justify-between mb-10">
+          <div className="mb-10">
             <h2 className="font-display text-3xl lg:text-5xl font-bold text-[#0B0B0B] leading-tight">
-              DÀNH CHO NGƯỜI<br />DÙNG THÔNG MINH
+              TÌNH HUỐNG<br />MINH HỌA
             </h2>
-            <div className="hidden sm:flex items-center gap-3">
-              <button
-                onClick={() => setSlide((s) => Math.max(0, s - 1))}
-                className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center hover:bg-slate-300 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4 text-slate-600" />
-              </button>
-              <button
-                onClick={() => setSlide((s) => Math.min(testimonials.length - 1, s + 1))}
-                className="w-10 h-10 rounded-full bg-[#4F6BFF] flex items-center justify-center hover:bg-[#3D53E8] transition-colors"
-              >
-                <ArrowRight className="w-4 h-4 text-white" />
-              </button>
-            </div>
+            <p className="mt-3 max-w-2xl text-slate-600">
+              Các ví dụ dưới đây mô tả luồng bảo vệ trong bản demo, không phải lời chứng thực của khách hàng.
+            </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {testimonials.map((t) => (
+            {exampleScenarios.map((t) => (
               <div
                 key={t.name}
                 className={`rounded-3xl p-8 flex flex-col justify-between min-h-[240px] shadow-sm ${
@@ -450,7 +426,7 @@ export default function HomePage() {
                   t.theme === "dark" ? "bg-white/10" : "bg-white/60"
                 }`}>
                   <Star className="w-3.5 h-3.5 fill-current" />
-                  {t.name} · Người dùng Timi
+                  {t.name} · Bản demo Timi
                 </div>
               </div>
             ))}
@@ -458,7 +434,6 @@ export default function HomePage() {
 
           {/* MEET MONEY WITHOUT BORDERS -> Tiền bạc không còn giới hạn */}
           <div className="mt-16 bg-gradient-to-br from-[#3D5AFB] to-[#6C4CE0] rounded-[2.5rem] px-8 py-16 lg:py-24 flex flex-col items-center text-center relative overflow-hidden">
-            {/* Khung placeholder cho ảnh trái đất của bạn */}
             <div className="mb-8 w-40 h-40 flex items-center justify-center">
               <img src="https://res.cloudinary.com/dduc9plv6/image/upload/fintechguard/frontend/plant.png" alt="Timi" className="w-full h-full object-contain" />
             </div>
@@ -466,7 +441,7 @@ export default function HomePage() {
               TIỀN BẠC KHÔNG<br />CÒN GIỚI HẠN
             </h2>
             <p className="text-slate-300 mt-4 max-w-xl">
-              Chúng tôi xây dựng cách tốt nhất để quản lý và bảo vệ tiền của bạn. Ít phí. Nhiều an tâm. Tốc độ tối đa.
+              Timi minh họa cách tra cứu người nhận, chuyển tiền nội bộ và giải thích tín hiệu rủi ro trong một luồng rõ ràng.
             </p>
             <Link to="/mission" className="mt-8 px-7 py-3.5 bg-white text-[#4F6BFF] font-bold rounded-full hover:bg-slate-100 transition-colors">
               Tìm hiểu sứ mệnh của Timi
@@ -482,22 +457,22 @@ export default function HomePage() {
             <div className="space-y-6">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full border border-white/20">
                 <Shield className="w-4 h-4 text-[#4F6BFF]" />
-                <span className="text-sm font-medium">Công nghệ độc quyền</span>
+                <span className="text-sm font-medium">Bản demo AI Anti-Scam</span>
               </div>
 
               <h2 className="font-display text-3xl lg:text-5xl font-bold leading-tight">
                 AI Anti-Scam Agent<br />
-                <span className="text-[#4F6BFF]">bảo vệ 24/7</span>
+                <span className="text-[#4F6BFF]">bảo vệ chủ động</span>
               </h2>
 
               <p className="text-slate-300 text-lg leading-relaxed">
-                Hệ thống AI của Timi phân tích hành vi giao dịch, nhận diện mẫu lừa đảo và cảnh báo ngay lập tức trước khi tiền của bạn rời khỏi ví.
+                Hệ thống phân tích dữ liệu giao dịch và các tín hiệu nội bộ để giải thích mức rủi ro trước khi người dùng xác nhận.
               </p>
 
               <div className="space-y-4 pt-4">
                 {[
-                  "Phát hiện giao dịch bất thường trong 50ms",
-                  "Cơ sở dữ liệu scam cập nhật real-time",
+                  "Phân tích tín hiệu bất thường trước bước xác nhận",
+                  "Đối chiếu blacklist và tín hiệu rủi ro nội bộ",
                   "Xác thực đa lớp cho giao dịch lớn",
                   "Can thiệp AI thông minh khi phát hiện rủi ro",
                 ].map((item) => (
@@ -616,17 +591,15 @@ export default function HomePage() {
             XEM TIMI HOẠT ĐỘNG
           </h2>
           <p className="text-slate-400 max-w-xl mx-auto mb-10">
-            60 giây để thấy AI Anti-Scam chặn một giao dịch lừa đảo theo thời gian thực.
+            Xem AI Anti-Scam phân tích và cảnh báo một giao dịch có dấu hiệu lừa đảo.
           </p>
 
           <div className="relative max-w-3xl mx-auto rounded-[2rem] overflow-hidden group cursor-pointer">
-            {/* Thay src bên dưới bằng video thật của bạn; ảnh nền chỉ là placeholder trang trí */}
             <div className="aspect-video bg-gradient-to-br from-[#3D5AFB] to-[#6C4CE0] flex items-center justify-center">
               <Link to="/demo" aria-label="Xem demo Timi Guard" className="flex h-20 w-20 items-center justify-center rounded-full bg-white transition-transform group-hover:scale-110">
                 <Play className="w-8 h-8 text-[#4F6BFF] ml-1" fill="currentColor" />
               </Link>
             </div>
-            {/* <video className="absolute inset-0 w-full h-full object-cover" controls poster="/assets/video-poster.jpg" src="/assets/timi-demo.mp4" /> */}
           </div>
         </div>
       </section>
@@ -638,11 +611,11 @@ export default function HomePage() {
             Sẵn sàng bảo vệ ví tiền của bạn?
           </h2>
           <p className="text-lg text-slate-600 mb-10 max-w-2xl mx-auto">
-            Tham gia cùng hàng triệu người dùng đang được Timi bảo vệ mỗi ngày. Đăng ký miễn phí, chỉ mất 30 giây.
+            Tạo tài khoản để trải nghiệm luồng kiểm tra rủi ro và chuyển tiền nội bộ Timi.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button onClick={() => navigate("/register")} className="px-10 py-4 bg-[#4F6BFF] text-white font-bold rounded-2xl hover:bg-[#3D53E8] hover:scale-105 transition-all">
-              Tạo tài khoản miễn phí
+              Tạo tài khoản thử nghiệm
             </button>
             <button onClick={() => navigate("/login")} className="px-10 py-4 bg-white text-[#0B0B0B] font-bold rounded-2xl border border-slate-200 hover:border-[#4F6BFF] transition-all">
               Đã có tài khoản? Đăng nhập
@@ -663,7 +636,7 @@ export default function HomePage() {
                 <span className="font-display text-2xl font-bold bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-transparent">Timi</span>
               </div>
               <p className="max-w-sm text-xs leading-5 sm:text-sm sm:leading-relaxed">
-                Ví điện tử thông minh được bảo vệ bởi AI. Sứ mệnh của chúng tôi là giúp mọi giao dịch của bạn đều an toàn tuyệt đối.
+                Ví điện tử thử nghiệm có lớp phân tích rủi ro AI, giúp bạn kiểm tra dấu hiệu bất thường trước khi quyết định.
               </p>
             </div>
             <div className="min-w-0">

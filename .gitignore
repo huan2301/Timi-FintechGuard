@@ -29,7 +29,7 @@ env/
 .DS_Store
 Thumbs.db
 
-mobile/
+# mobile/
 
 # Data (never commit large data)
 data/
@@ -50,6 +50,7 @@ docker-compose.override.yml
 
 # Node (frontend)
 node_modules/
+*.tsbuildinfo
 .next/
 out/
 .nuxt/

@@ -14,15 +14,9 @@ if TYPE_CHECKING:
 
 class TrustedRecipient(Base, TimestampMixin):
     __tablename__ = "trusted_recipients"
-    __table_args__ = (
-        UniqueConstraint(
-            "user_id", "account_number", "bank_code", name="uq_trusted_recipient_per_user"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "account_number", "bank_code", name="uq_trusted_recipient_per_user"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )

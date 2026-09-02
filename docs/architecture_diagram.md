@@ -1,6 +1,6 @@
 # Sơ Đồ Kiến Trúc
 
-> Xem chi tiết đầy đủ về ranh giới an toàn, chấm điểm rủi ro và bảng tra cứu mã nguồn tại [`ARCHITECTURE.md`](../ARCHITECTURE.md). File này tóm tắt sơ đồ tổng quan hệ thống.
+> Xem chi tiết đầy đủ về luồng hoạt động, ranh giới an toàn, chấm điểm rủi ro và bảng tra cứu mã nguồn tại [`ARCHITECTURE.md`](../ARCHITECTURE.md). File này tóm tắt sơ đồ tổng quan hệ thống.
 
 ## Tổng Quan Hệ Thống
 
@@ -69,4 +69,4 @@ Khác với template gốc (agent tự quyết định có gọi tool hay không
 | Admin Dashboard | FastAPI (`src/app/routers/api/admin/routes.py`) + Frontend | Quản lý user, blacklist, kịch bản lừa đảo, scam report, thống kê, audit log |
 | Scam Forecast | Chưa triển khai trong MVP hiện tại | Có trong roadmap, chưa phải module runtime |
 
-Xem đầy đủ sequence diagram cho luồng chuyển tiền, luồng Scam Call Guardian, ranh giới an toàn (safety boundaries) và bảng tra cứu mã nguồn chi tiết tại [`ARCHITECTURE.md`](../ARCHITECTURE.md).
+Xem đầy đủ sequence diagram cho luồng chuyển tiền, Scam Call Guardian và ranh giới an toàn tại [`ARCHITECTURE.md`](../ARCHITECTURE.md).

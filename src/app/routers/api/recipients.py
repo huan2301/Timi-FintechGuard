@@ -25,6 +25,11 @@ def resolve_recipient(
     bank_code = normalize_bank_name(payload.bank_code)
     if bank_code is None:
         raise HTTPException(status_code=422, detail="Ngân hàng không hợp lệ")
+    if bank_code != TIMI_BANK_CODE:
+        raise HTTPException(
+            status_code=503,
+            detail="Tra cứu và chuyển liên ngân hàng chưa khả dụng vì chưa tích hợp cổng quyết toán thật.",
+        )
     if bank_code == TIMI_BANK_CODE and len(payload.account_number) != 10:
         raise HTTPException(status_code=422, detail="Số tài khoản Timi Bank phải gồm đúng 10 chữ số")
     try:
@@ -48,11 +53,7 @@ def resolve_recipient(
         account_name=result.account_name,
         source=result.source,
         risk_status="caution" if result.needs_caution else "clear",
-        risk_message=(
-            "Người nhận có dấu hiệu rủi ro"
-            if result.needs_caution
-            else None
-        ),
+        risk_message=("Người nhận có dấu hiệu rủi ro" if result.needs_caution else None),
         verification_token=create_recipient_lookup_token(
             user_id=str(current_user.id),
             account_number=payload.account_number,

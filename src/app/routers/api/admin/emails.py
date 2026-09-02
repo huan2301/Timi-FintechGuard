@@ -10,12 +10,13 @@ Mount:
 
 from __future__ import annotations
 
+import html as html_lib
 import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,7 @@ from src.app.core.deps import get_current_user, require_admin
 from src.app.db.session import get_db
 from src.app.models.newsletter_subscriber import NewsletterSubscriber
 from src.app.models.notification import Notification
+from src.app.models.notification_preference import NotificationPreference
 from src.app.models.user import User
 from src.app.services.audit import add_audit_log
 from src.app.services.email_service import send_batch_emails, send_email, wrap_broadcast_html
@@ -47,13 +49,26 @@ class BroadcastRequest(BaseModel):
     html: str = Field(min_length=1, max_length=50_000)
     dry_run: bool = False
 
+    @field_validator("subject", "html")
+    @classmethod
+    def reject_blank_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Nội dung email không được để trống")
+        return value
+
 
 class ProductUpdateRequest(BaseModel):
     version: str | None = Field(default=None, max_length=40)
     title: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=20_000)
-    # Giữ field để tương thích UI cũ — bị bỏ qua, không gửi mail
-    send_now: bool = True
+    send_now: bool = False
+
+    @field_validator("title", "body")
+    @classmethod
+    def reject_blank_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Nội dung cập nhật không được để trống")
+        return value
 
 
 class BroadcastResult(BaseModel):
@@ -62,30 +77,44 @@ class BroadcastResult(BaseModel):
     message: str
 
 
-def _all_users_with_email(db: Session) -> list[tuple[str, str]]:
+def _promotion_email_recipients(db: Session) -> list[tuple[str, str]]:
     users = list(
         db.scalars(
-            select(User).where(User.email.is_not(None), User.email != "")
+            select(User)
+            .join(
+                NotificationPreference,
+                NotificationPreference.user_id == User.id,
+            )
+            .where(
+                User.email.is_not(None),
+                User.email != "",
+                NotificationPreference.promotion_enabled.is_(True),
+            )
         ).all()
     )
-    return [
-        (u.email, getattr(u, "full_name", None) or "bạn")
-        for u in users
-        if u.email
-    ]
+    return [(u.email, getattr(u, "full_name", None) or "bạn") for u in users if u.email]
 
 
 def _newsletter_recipients(db: Session, existing: list[tuple[str, str]]) -> list[tuple[str, str]]:
     existing_emails = {email.lower() for email, _ in existing}
     return [
-        (subscriber.email, "báº¡n")
+        (subscriber.email, "bạn")
         for subscriber in db.scalars(select(NewsletterSubscriber)).all()
         if subscriber.email.lower() not in existing_emails
     ]
 
 
-def _all_user_ids(db: Session) -> list:
-    return list(db.scalars(select(User.id)).all())
+def _promotion_user_ids(db: Session) -> list:
+    return list(
+        db.scalars(
+            select(User.id)
+            .join(
+                NotificationPreference,
+                NotificationPreference.user_id == User.id,
+            )
+            .where(NotificationPreference.promotion_enabled.is_(True))
+        ).all()
+    )
 
 
 def _send_batch(
@@ -99,13 +128,12 @@ def _send_batch(
         {
             "to": email,
             "subject": subject,
-            "html": wrapped.replace("{{full_name}}", name or "bạn"),
+            "html": wrapped.replace("{{full_name}}", html_lib.escape(name or "bạn")),
         }
         for email, name in recipients
     ]
     ok, fail = send_batch_emails(items=items)
     logger.info("Broadcast done: success=%d failed=%d total=%d", ok, fail, len(items))
-    print(f"BROADCAST RESULT: ok={ok} fail={fail} total={len(items)}")
 
 
 def _create_notifications_for_all(
@@ -114,12 +142,9 @@ def _create_notifications_for_all(
     title: str,
     body: str,
     version: str | None,
-    actor_id,
 ) -> int:
-    """
-    Tạo notification cho mọi user.
-    """
-    user_ids = _all_user_ids(db)
+    """Create product notifications only for users who opted in."""
+    user_ids = _promotion_user_ids(db)
     if not user_ids:
         return 0
 
@@ -147,7 +172,7 @@ def broadcast_email(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> BroadcastResult:
-    recipients = _all_users_with_email(db)
+    recipients = _promotion_email_recipients(db)
     recipients.extend(_newsletter_recipients(db, recipients))
 
     if payload.dry_run:
@@ -161,9 +186,7 @@ def broadcast_email(
             send_email,
             to=admin_email,
             subject=f"[DRY-RUN] {payload.subject}",
-            html=wrap_broadcast_html(
-                body_html=payload.html, preheader=payload.subject
-            ),
+            html=wrap_broadcast_html(body_html=payload.html, preheader=payload.subject),
         )
         add_audit_log(
             db,
@@ -180,17 +203,14 @@ def broadcast_email(
         return BroadcastResult(
             queued=1,
             dry_run=True,
-            message=(
-                f"Đã xếp hàng gửi thử tới {admin_email}. "
-                f"Tổng user có email: {len(recipients)}."
-            ),
+            message=(f"Đã xếp hàng gửi thử tới {admin_email}. Số người nhận đã đồng ý nhận tin: {len(recipients)}."),
         )
 
     if not recipients:
         return BroadcastResult(
             queued=0,
             dry_run=False,
-            message="Không có user nào có email.",
+            message="Không có người nhận nào đã đồng ý nhận tin.",
         )
 
     background_tasks.add_task(
@@ -214,17 +234,18 @@ def broadcast_email(
     return BroadcastResult(
         queued=len(recipients),
         dry_run=False,
-        message=f"Đã xếp hàng gửi {len(recipients)} email tới toàn bộ user.",
+        message=f"Đã xếp hàng gửi {len(recipients)} email tới các địa chỉ đã đồng ý nhận tin.",
     )
 
 
 @router.post("/product-update", response_model=BroadcastResult)
 def publish_product_update(
     payload: ProductUpdateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> BroadcastResult:
-    """Công bố cập nhật → thông báo chuông Profile (không gửi mail)."""
+    """Publish an in-app update and optionally email consented recipients."""
     title = payload.title
     if payload.version:
         title = f"[{payload.version}] {payload.title}"
@@ -234,8 +255,19 @@ def publish_product_update(
         title=title,
         body=payload.body,
         version=payload.version,
-        actor_id=admin.id,
     )
+    email_recipients: list[tuple[str, str]] = []
+    if payload.send_now:
+        email_recipients = _promotion_email_recipients(db)
+        email_recipients.extend(_newsletter_recipients(db, email_recipients))
+        if email_recipients:
+            escaped_body = html_lib.escape(payload.body).replace("\n", "<br>")
+            background_tasks.add_task(
+                _send_batch,
+                recipients=email_recipients,
+                subject=title,
+                html=escaped_body,
+            )
     add_audit_log(
         db,
         action="notification.product_update",
@@ -246,24 +278,26 @@ def publish_product_update(
             "version": payload.version,
             "title": payload.title,
             "notification_count": count,
+            "email_recipient_count": len(email_recipients),
+            "email_requested": payload.send_now,
         },
     )
     db.commit()
 
-    if count == 0:
+    if count == 0 and not email_recipients:
         return BroadcastResult(
             queued=0,
             dry_run=False,
-            message=(
-                "Chưa tạo được thông báo in-app. "
-                "Cần model Notification (xem artifacts/notification_model.py)."
-            ),
+            message="Không có người dùng nào đã đồng ý nhận thông báo sản phẩm.",
         )
 
     return BroadcastResult(
-        queued=count,
+        queued=count + len(email_recipients),
         dry_run=False,
-        message=f"Đã đẩy {count} thông báo cập nhật lên chuông Profile (không gửi mail).",
+        message=(
+            f"Đã tạo {count} thông báo trong ứng dụng"
+            + (f" và xếp hàng {len(email_recipients)} email." if payload.send_now else ".")
+        ),
     )
 
 
@@ -281,9 +315,66 @@ class NotificationOut(BaseModel):
     is_read: bool
     created_at: str
 
+
+class NotificationPreferencesIn(BaseModel):
+    transaction: bool
+    security: bool
+    promotion: bool
+
+
+class NotificationPreferencesOut(NotificationPreferencesIn):
+    pass
+
+
+def _preference_out(row: NotificationPreference | None) -> NotificationPreferencesOut:
+    return NotificationPreferencesOut(
+        transaction=row.transaction_enabled if row else True,
+        security=row.security_enabled if row else True,
+        promotion=row.promotion_enabled if row else False,
+    )
+
+
+@notifications_router.get("/preferences", response_model=NotificationPreferencesOut)
+def get_notification_preferences(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> NotificationPreferencesOut:
+    return _preference_out(db.get(NotificationPreference, user.id))
+
+
+@notifications_router.put("/preferences", response_model=NotificationPreferencesOut)
+def update_notification_preferences(
+    payload: NotificationPreferencesIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> NotificationPreferencesOut:
+    row = db.get(NotificationPreference, user.id)
+    if row is None:
+        row = NotificationPreference(user_id=user.id)
+        db.add(row)
+    row.transaction_enabled = payload.transaction
+    row.security_enabled = payload.security
+    row.promotion_enabled = payload.promotion
+    add_audit_log(
+        db,
+        action="notification.preferences_updated",
+        actor_id=user.id,
+        resource_type="notification_preference",
+        resource_id=user.id,
+        metadata={
+            "transaction": payload.transaction,
+            "security": payload.security,
+            "promotion": payload.promotion,
+        },
+    )
+    db.commit()
+    db.refresh(row)
+    return _preference_out(row)
+
+
 @notifications_router.get("", response_model=list[NotificationOut])
 def list_my_notifications(
-    limit: int = 30,
+    limit: int = Query(default=30, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

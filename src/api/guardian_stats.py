@@ -21,8 +21,10 @@ from pydantic import BaseModel, Field
 try:
     from src.app.core.deps import require_admin
 except ImportError:  # pragma: no cover
+
     def require_admin() -> None:  # type: ignore
         return None
+
 
 router = APIRouter(prefix="/guardian", tags=["guardian-stats"])
 
@@ -92,9 +94,7 @@ def summary(
         "source_distribution": dict(sources),
         "schema_ok_rate": round(schema_ok / len(rows), 4),
         "avg_latency_ms": avg_lat,
-        "avg_risk_score": round(
-            sum(r["risk_score"] for r in rows) / len(rows), 1
-        ),
+        "avg_risk_score": round(sum(r["risk_score"] for r in rows) / len(rows), 1),
     }
 
 

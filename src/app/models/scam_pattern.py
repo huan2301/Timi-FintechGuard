@@ -16,9 +16,7 @@ if TYPE_CHECKING:
 class ScamPattern(Base, TimestampMixin):
     __tablename__ = "scam_patterns"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     pattern_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     keywords: Mapped[list[str] | None] = mapped_column(ARRAY(String(120)), nullable=True)
@@ -31,9 +29,7 @@ class ScamPattern(Base, TimestampMixin):
     # as JSON in the transactional PostgreSQL schema.
     vector_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    embedding_updated_at: Mapped[datetime | None] = mapped_column(
-        nullable=True
-    )
+    embedding_updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     source: Mapped["IntelligenceSource | None"] = relationship(back_populates="scam_patterns")

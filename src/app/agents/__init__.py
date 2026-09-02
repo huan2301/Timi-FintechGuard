@@ -2,9 +2,9 @@
 
 from src.app.agents.contracts import AgentCall, AgentCapability, AgentId, ChatIntent
 from src.app.agents.specialists import (
-    ChatSupportResult,
     ChatSupportIntentResult,
     ChatSupportIntentTask,
+    ChatSupportResult,
     ChatSupportTask,
     GuardianAudioTask,
     GuardianRiskTask,

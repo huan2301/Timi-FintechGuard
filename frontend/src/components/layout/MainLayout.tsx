@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import MiniTimiAssistant from "@/components/ai/MiniTimiAssistant";
 import ScamGuardianAlert from "@/components/guardian/ScamGuardianAlert";
+import GuardianDiagnostics from "@/components/guardian/GuardianDiagnostics";
+import GuardianStatusNotice from "@/components/guardian/GuardianStatusNotice";
 import { ScamGuardianProvider } from "@/components/guardian/ScamGuardianProvider";
 import PinSetupEnforcer from "@/components/auth/PinSetupEnforcer";
 import TimiLogo from "@/components/brand/TimiLogo";
@@ -212,6 +214,8 @@ export default function MainLayout() {
 
         <MiniTimiAssistant />
         <ScamGuardianAlert />
+        <GuardianStatusNotice />
+        <GuardianDiagnostics />
       </div>
     </ScamGuardianProvider>
   );

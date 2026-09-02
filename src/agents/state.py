@@ -21,8 +21,8 @@ class AgentState(TypedDict, total=False):
     # ── Transaction analysis ───────────────────────────────────────────────
     # Tên field phải khớp chính xác với TransactionRequest để tránh
     # lỗi tích hợp "state rỗng không báo lỗi rõ ràng".
-    transaction: dict          # dump của TransactionRequest
-    warning_level: str         # safe | suspicious | high_risk
-    explanation: str           # giải thích
-    risk_score: float          # 0.0 – 1.0
+    transaction: dict  # dump của TransactionRequest
+    warning_level: str  # safe | suspicious | high_risk
+    explanation: str  # giải thích
+    risk_score: float  # 0.0 – 1.0
     matched_entry_masked: str  # thông tin đã mask (PDPA)

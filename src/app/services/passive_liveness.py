@@ -35,9 +35,7 @@ def _get_cv2():
     try:
         import cv2
     except ImportError as exc:  # pragma: no cover - exercised by deployment
-        raise PassiveLivenessUnavailableError(
-            "OpenCV chưa được cài đặt cho Passive Liveness."
-        ) from exc
+        raise PassiveLivenessUnavailableError("OpenCV chưa được cài đặt cho Passive Liveness.") from exc
     return cv2
 
 
@@ -68,29 +66,22 @@ def _load_model(path_string: str, expected_hash: str):
     """Load one checksum-pinned ONNX classifier once per worker."""
     path = Path(path_string)
     if not path.is_file():
-        raise PassiveLivenessUnavailableError(
-            "Thiếu model Passive Liveness trên máy chủ."
-        )
+        raise PassiveLivenessUnavailableError("Thiếu model Passive Liveness trên máy chủ.")
 
     actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual_hash.lower() != expected_hash.lower():
-        raise PassiveLivenessUnavailableError(
-            "Model Passive Liveness không hợp lệ hoặc đã bị thay đổi."
-        )
+        raise PassiveLivenessUnavailableError("Model Passive Liveness không hợp lệ hoặc đã bị thay đổi.")
 
     try:
         return _get_cv2().dnn.readNetFromONNX(str(path))
     except Exception as exc:  # pragma: no cover - depends on OpenCV runtime
-        raise PassiveLivenessUnavailableError(
-            "Không thể khởi tạo model Passive Liveness."
-        ) from exc
+        raise PassiveLivenessUnavailableError("Không thể khởi tạo model Passive Liveness.") from exc
 
 
 def _models() -> tuple[tuple[object, float], ...]:
     """Load MiniFASNet-V2 and V1SE, as used by the upstream ensemble."""
     return tuple(
-        (_load_model(str(path), expected_hash), crop_scale)
-        for path, expected_hash, crop_scale in _model_specs()
+        (_load_model(str(path), expected_hash), crop_scale) for path, expected_hash, crop_scale in _model_specs()
     )
 
 
@@ -191,9 +182,7 @@ def _infer(image_rgb: np.ndarray, face_box: Sequence[float]) -> dict[str, float]
             network.setInput(blob)
             logits = np.asarray(network.forward(), dtype=np.float64).reshape(-1)
             if logits.size != 3 or not np.all(np.isfinite(logits)):
-                raise PassiveLivenessUnavailableError(
-                    "Model Passive Liveness trả về dữ liệu không hợp lệ."
-                )
+                raise PassiveLivenessUnavailableError("Model Passive Liveness trả về dữ liệu không hợp lệ.")
             # The upstream implementation adds per-model softmax predictions,
             # rather than trusting a single camera-sensitive classifier.
             probability_sum += _softmax(logits)
@@ -221,10 +210,7 @@ def passive_liveness_check(image_rgb: np.ndarray, face_box: Sequence[float]) -> 
         # labels. Keep only a small ambiguity floor for near-uniform outputs;
         # a 0.65 binary-style threshold is invalid for this three-class model
         # and caused genuine webcam captures to be rejected.
-        is_live = (
-            scores["live_score"] >= threshold
-            and scores["live_score"] > strongest_spoof_score
-        )
+        is_live = scores["live_score"] >= threshold and scores["live_score"] > strongest_spoof_score
         return {
             "is_live": is_live,
             "confidence": scores["live_score"],
@@ -238,9 +224,7 @@ def passive_liveness_check(image_rgb: np.ndarray, face_box: Sequence[float]) -> 
         raise
     except Exception as exc:
         _LOGGER.exception("Passive liveness analysis failed.")
-        raise PassiveLivenessUnavailableError(
-            "Không thể phân tích Passive Liveness."
-        ) from exc
+        raise PassiveLivenessUnavailableError("Không thể phân tích Passive Liveness.") from exc
 
 
 def _fingerprint(face_rgb: np.ndarray) -> str:
@@ -289,9 +273,7 @@ def multiframe_liveness_check(
         raise
     except Exception as exc:
         _LOGGER.exception("Passive liveness burst analysis failed.")
-        raise PassiveLivenessUnavailableError(
-            "Không thể kiểm tra chuỗi ảnh Passive Liveness."
-        ) from exc
+        raise PassiveLivenessUnavailableError("Không thể kiểm tra chuỗi ảnh Passive Liveness.") from exc
 
     duplicate_detected = len(set(fingerprints)) != len(fingerprints)
     confidences = [float(result["confidence"]) for result in results]

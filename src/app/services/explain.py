@@ -6,10 +6,11 @@ suy dien". O sprint sau, LangGraph agent se thay ham explain() bang LLM + RAG,
 nhung van nhan dung list[RiskSignal] nay lam input.
 """
 
+from sqlalchemy.orm import Session
+
 from src.app.models import Blacklist  # ✅ Dung dung model tu models.py
 from src.app.models.transaction import RiskLevel
 from src.app.schemas.risk import RiskSignal
-from sqlalchemy.orm import Session
 
 _LEVEL_INTRO = {
     RiskLevel.LOW: "Giao dich nay khong co dau hieu bat thuong.",
@@ -20,8 +21,7 @@ _LEVEL_INTRO = {
 _LEVEL_RECOMMENDATION = {
     RiskLevel.LOW: "Ban co the tiep tuc giao dich.",
     RiskLevel.MEDIUM: (
-        "Hay xac minh lai nguoi nhan qua mot kenh lien lac khac "
-        "(goi dien truc tiep) truoc khi chuyen tien."
+        "Hay xac minh lai nguoi nhan qua mot kenh lien lac khac (goi dien truc tiep) truoc khi chuyen tien."
     ),
     RiskLevel.HIGH: (
         "Chung toi khuyen nghi ban TAM DUNG giao dich va xac minh truc tiep voi "
@@ -52,15 +52,11 @@ def explain(risk_level: RiskLevel, signals: list[RiskSignal]) -> str:
 
     if risk_increasing:
         lines.append("\nLy do canh bao:")
-        lines.extend(
-            f"- {s.label}" + (f": {s.detail}" if s.detail else "") for s in risk_increasing
-        )
+        lines.extend(f"- {s.label}" + (f": {s.detail}" if s.detail else "") for s in risk_increasing)
 
     if risk_reducing:
         lines.append("\nYeu to lam giam rui ro:")
-        lines.extend(
-            f"- {s.label}" + (f": {s.detail}" if s.detail else "") for s in risk_reducing
-        )
+        lines.extend(f"- {s.label}" + (f": {s.detail}" if s.detail else "") for s in risk_reducing)
 
     return "\n".join(lines)
 
@@ -78,11 +74,7 @@ def verification_questions(risk_level: RiskLevel) -> list[str]:
 
 
 # ✅ Ham moi: Kiem tra blacklist voi STK + Bank (dieu kien KIEN QUYET)
-def check_blacklist_signal(
-    db: Session,
-    payee_account: str,
-    payee_bank: str
-) -> RiskSignal | None:
+def check_blacklist_signal(db: Session, payee_account: str, payee_bank: str) -> RiskSignal | None:
     """
     Kiem tra STK + Ngan hang trong blacklist.
     Ten trong evidence chi de hien thi, khong dung de match.
@@ -92,23 +84,27 @@ def check_blacklist_signal(
     if not payee_account or not payee_bank:
         return None
 
-    entry = db.query(Blacklist).filter(
-        Blacklist.entity_value == payee_account.replace(' ', '').strip(),
-        Blacklist.bank == payee_bank.strip(),
-        Blacklist.is_active == True,
-        Blacklist.entity_type == "account"
-    ).first()
+    entry = (
+        db.query(Blacklist)
+        .filter(
+            Blacklist.entity_value == payee_account.replace(" ", "").strip(),
+            Blacklist.bank == payee_bank.strip(),
+            Blacklist.is_active.is_(True),
+            Blacklist.entity_type == "account",
+        )
+        .first()
+    )
 
     if entry is None:
         return None
 
     # Lay ten tu evidence de hien thi (co the thay doi, khong dung de match)
     evidence = entry.evidence or {}
-    ten = evidence.get('ten', 'Khong ro')
+    ten = evidence.get("ten", "Khong ro")
 
     return RiskSignal(
         code="BLACKLISTED_PAYEE",
         label="Nguoi nhan nam trong danh sach den",
         weight=70,
-        detail=f"{ten} | {entry.bank} | Risk: {float(entry.risk_score)*100:.0f}%",
+        detail=f"{ten} | {entry.bank} | Risk: {float(entry.risk_score) * 100:.0f}%",
     )

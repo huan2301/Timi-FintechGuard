@@ -2,25 +2,25 @@ from src.agents.state import AgentState
 
 
 async def analyze_node(state: AgentState) -> dict:
-    """Phân tích query từ user."""
-    query = state.get("query", "")
+    """Normalize the query for the bounded legacy compatibility graph."""
+    query = state.get("query", "").strip()
+    if not query:
+        return {"error": "Yêu cầu không được để trống"}
 
-    # TODO: Thêm logic phân tích thực tế
-    # Ví dụ: gọi LLM, search vector DB, etc.
-    analysis = f"Phân tích: {query}"
-
-    return {"analysis": analysis}
+    return {"analysis": f"Yêu cầu đã tiếp nhận: {query}"}
 
 
 async def respond_node(state: AgentState) -> dict:
-    """Tạo response từ analysis."""
+    """Return an explicit migration response for the legacy graph."""
     analysis = state.get("analysis", "")
     error = state.get("error")
 
     if error:
         return {"response": f"Lỗi: {error}"}
 
-    # TODO: Thêm logic tạo response thực tế
-    response = f"Kết quả dựa trên phân tích: {analysis}"
-
-    return {"response": response}
+    return {
+        "response": (
+            f"{analysis}. Luồng tương thích này không thực hiện phân tích AI; "
+            "hãy dùng API trợ lý hoặc đánh giá giao dịch hiện hành."
+        )
+    }

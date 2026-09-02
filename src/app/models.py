@@ -1,10 +1,13 @@
-from sqlalchemy import Column, String, DECIMAL, Boolean, DateTime, ForeignKey, Text, JSON, ARRAY, UUID, Integer,Index
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, INET
-from sqlalchemy.orm import declarative_base, relationship
-from datetime import datetime
 import uuid
+from datetime import datetime
+
+from sqlalchemy import ARRAY, DECIMAL, JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
 
 class User(Base):
     __tablename__ = "users"
@@ -19,6 +22,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     transactions = relationship("Transaction", back_populates="user")
     trusted_recipients = relationship("TrustedRecipient", back_populates="user")
+
 
 class TrustedRecipient(Base):
     __tablename__ = "trusted_recipients"
@@ -46,9 +50,8 @@ class Blacklist(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     # ✅ THÊM INDEX cho query nhanh theo STK + Ngân hàng
-    __table_args__ = (
-        Index('idx_blacklist_account_bank', 'entity_value', 'bank'),
-    )
+    __table_args__ = (Index("idx_blacklist_account_bank", "entity_value", "bank"),)
+
 
 class ScamPattern(Base):
     __tablename__ = "scam_patterns"
@@ -56,10 +59,11 @@ class ScamPattern(Base):
     pattern_name = Column(String(100), nullable=False)
     description = Column(Text, nullable=False)
     keywords = Column(ARRAY(Text))
-    risk_weight = Column(DECIMAL(3,2), default=0.5)
+    risk_weight = Column(DECIMAL(3, 2), default=0.5)
     vector_embedding = Column(JSON)  # Đổi từ VECTOR sang JSONB
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -68,12 +72,12 @@ class Transaction(Base):
     recipient_name = Column(String(100), nullable=False)
     recipient_account = Column(String(100), nullable=False)
     recipient_bank = Column(String(20))
-    amount = Column(DECIMAL(15,2), nullable=False)
+    amount = Column(DECIMAL(15, 2), nullable=False)
     currency = Column(String(10), default="VND")
     description = Column(Text)
-    ml_risk_score = Column(DECIMAL(4,3))
-    rule_risk_score = Column(DECIMAL(4,3))
-    final_risk_score = Column(DECIMAL(4,3))
+    ml_risk_score = Column(DECIMAL(4, 3))
+    rule_risk_score = Column(DECIMAL(4, 3))
+    final_risk_score = Column(DECIMAL(4, 3))
     risk_level = Column(String(20))
     agent_warning_shown = Column(Boolean, default=False)
     warning_reason = Column(Text)
@@ -84,6 +88,7 @@ class Transaction(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     user = relationship("User", back_populates="transactions")
     interventions = relationship("InterventionLog", back_populates="transaction")
+
 
 class InterventionLog(Base):
     __tablename__ = "intervention_logs"
@@ -97,6 +102,7 @@ class InterventionLog(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     transaction = relationship("Transaction", back_populates="interventions")
 
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -109,6 +115,7 @@ class AuditLog(Base):
     performed_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     ip_address = Column(INET)
     user_agent = Column(Text)
+
 
 class ScamReport(Base):
     __tablename__ = "scam_reports"

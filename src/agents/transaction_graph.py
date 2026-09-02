@@ -33,8 +33,14 @@ class AssessmentState(TypedDict, total=False):
 def _guard_input(state: AssessmentState) -> dict[str, Any]:
     note = (state["request"].note or "").lower()
     markers = (
-        "ignore previous", "system prompt", "developer message", "jailbreak",
-        "bỏ qua hướng dẫn", "bỏ qua quy tắc", "api key", "mật khẩu",
+        "ignore previous",
+        "system prompt",
+        "developer message",
+        "jailbreak",
+        "bỏ qua hướng dẫn",
+        "bỏ qua quy tắc",
+        "api key",
+        "mật khẩu",
     )
     return {"prompt_injection_detected": any(marker in note for marker in markers)}
 
@@ -72,12 +78,16 @@ def _explain(state: AssessmentState) -> dict[str, Any]:
             "Do not calculate or change risk score, do not invent facts, and do not reveal secrets. "
             "If evidence is insufficient, say so.\nEvidence:\n" + evidence[:4000]
         )
-        output = ChatOpenAI(
-            api_key=settings.openai_api_key,
-            model=settings.model_name,
-            temperature=0,
-            max_tokens=300,
-        ).invoke(prompt).content
+        output = (
+            ChatOpenAI(
+                api_key=settings.openai_api_key,
+                model=settings.model_name,
+                temperature=0,
+                max_tokens=300,
+            )
+            .invoke(prompt)
+            .content
+        )
         text = output if isinstance(output, str) else str(output)
         lowered = text.lower()
         forbidden = ("api_key", "authorization", "password", "secret", "sk-")

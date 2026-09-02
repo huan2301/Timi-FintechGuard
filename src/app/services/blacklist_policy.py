@@ -21,31 +21,59 @@ def promote_blacklist_if_eligible(db: Session, account: str, bank: str | None, a
     bank = normalize_bank_name(bank)
     if not account or not bank:
         return None
-    existing = db.scalar(select(Blacklist).where(
-        Blacklist.entity_type == "account", Blacklist.entity_value == account,
-        Blacklist.bank == bank, Blacklist.is_active.is_(True),
-    ))
+    existing = db.scalar(
+        select(Blacklist).where(
+            Blacklist.entity_type == "account",
+            Blacklist.entity_value == account,
+            Blacklist.bank == bank,
+            Blacklist.is_active.is_(True),
+        )
+    )
     if existing:
         return existing
 
-    high_users = db.scalar(select(func.count(distinct(Transaction.user_id)))
-        .select_from(TransactionRiskAssessment)
-        .join(Transaction, Transaction.id == TransactionRiskAssessment.transaction_id)
-        .where(Transaction.payee_account == account, Transaction.bank_code == bank,
-               TransactionRiskAssessment.risk_level == "high")) or 0
-    high_count = db.scalar(select(func.count(TransactionRiskAssessment.id))
-        .select_from(TransactionRiskAssessment)
-        .join(Transaction, Transaction.id == TransactionRiskAssessment.transaction_id)
-        .where(Transaction.payee_account == account, Transaction.bank_code == bank,
-               TransactionRiskAssessment.risk_level == "high")) or 0
+    high_users = (
+        db.scalar(
+            select(func.count(distinct(Transaction.user_id)))
+            .select_from(TransactionRiskAssessment)
+            .join(Transaction, Transaction.id == TransactionRiskAssessment.transaction_id)
+            .where(
+                Transaction.payee_account == account,
+                Transaction.bank_code == bank,
+                TransactionRiskAssessment.risk_level == "high",
+            )
+        )
+        or 0
+    )
+    high_count = (
+        db.scalar(
+            select(func.count(TransactionRiskAssessment.id))
+            .select_from(TransactionRiskAssessment)
+            .join(Transaction, Transaction.id == TransactionRiskAssessment.transaction_id)
+            .where(
+                Transaction.payee_account == account,
+                Transaction.bank_code == bank,
+                TransactionRiskAssessment.risk_level == "high",
+            )
+        )
+        or 0
+    )
 
-    confirmed_users = db.scalar(select(func.count(distinct(WarningFeedback.user_id)))
-        .select_from(WarningFeedback)
-        .join(TransactionWarning, TransactionWarning.id == WarningFeedback.warning_id)
-        .join(Transaction, Transaction.id == TransactionWarning.transaction_id)
-        .where(Transaction.payee_account == account, Transaction.bank_code == bank,
-               WarningFeedback.feedback_type == "confirmed_scam",
-               WarningFeedback.review_status != "rejected")) or 0
+    confirmed_users = (
+        db.scalar(
+            select(func.count(distinct(WarningFeedback.user_id)))
+            .select_from(WarningFeedback)
+            .join(TransactionWarning, TransactionWarning.id == WarningFeedback.warning_id)
+            .join(Transaction, Transaction.id == TransactionWarning.transaction_id)
+            .where(
+                Transaction.payee_account == account,
+                Transaction.bank_code == bank,
+                WarningFeedback.feedback_type == "confirmed_scam",
+                WarningFeedback.review_status != "rejected",
+            )
+        )
+        or 0
+    )
 
     reason = None
     if high_count >= MIN_HIGH_ASSESSMENTS and high_users >= MIN_INDEPENDENT_USERS:
@@ -56,15 +84,30 @@ def promote_blacklist_if_eligible(db: Session, account: str, bank: str | None, a
         return None
 
     entry = Blacklist(
-        entity_type="account", entity_value=account, bank=bank, source="agent_consensus",
+        entity_type="account",
+        entity_value=account,
+        bank=bank,
+        source="agent_consensus",
         risk_score=0.98,
-        evidence={"promotion_reason": reason, "high_assessment_count": high_count,
-                  "high_assessment_user_count": high_users, "confirmed_report_user_count": confirmed_users},
+        evidence={
+            "promotion_reason": reason,
+            "high_assessment_count": high_count,
+            "high_assessment_user_count": high_users,
+            "confirmed_report_user_count": confirmed_users,
+        },
     )
     db.add(entry)
     db.flush()
-    add_audit_log(db, action="blacklist.auto_promoted", actor_id=actor_id,
-                  resource_type="blacklist", resource_id=entry.id,
-                  metadata={"promotion_reason": reason, "high_assessment_count": high_count,
-                            "confirmed_report_user_count": confirmed_users})
+    add_audit_log(
+        db,
+        action="blacklist.auto_promoted",
+        actor_id=actor_id,
+        resource_type="blacklist",
+        resource_id=entry.id,
+        metadata={
+            "promotion_reason": reason,
+            "high_assessment_count": high_count,
+            "confirmed_report_user_count": confirmed_users,
+        },
+    )
     return entry

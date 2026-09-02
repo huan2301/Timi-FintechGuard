@@ -38,9 +38,12 @@ def _pseudonymize(value: str) -> str:
     """Create a stable, keyed pseudonym without retaining the source value."""
     settings = get_settings()
     secret = settings.risk_telemetry_hash_key or settings.jwt_secret_key
-    return hmac.new(
-        secret.encode("utf-8"), value.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
+    return hmac.new(secret.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def device_hash_from_id(device_id: str) -> str:
+    """Return the stable keyed pseudonym used to bind a login to one browser."""
+    return _pseudonymize(device_id)
 
 
 def build_risk_telemetry(
@@ -54,7 +57,7 @@ def build_risk_telemetry(
     accuracy = client_context.geo_accuracy_m if client_context is not None else None
     return RiskTelemetry(
         device_hash=(
-            _pseudonymize(client_context.device_id)
+            device_hash_from_id(client_context.device_id)
             if client_context is not None and client_context.device_id
             else None
         ),

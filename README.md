@@ -29,7 +29,7 @@ Timi là ứng dụng ngân hàng mô phỏng tập trung vào việc phát hi�
 ### Người dùng
 
 - Đăng ký/đăng nhập bằng email, mật khẩu và số điện thoại Timi 10 chữ số.
-- Sau khi đăng nhập, xác nhận vị trí gần đúng là bước bắt buộc trước khi vào các trang chức năng trên thiết bị chưa được ghi nhận. Cùng tài khoản trên cùng browser/device ID sẽ không bị hỏi lại ở các phiên sau; thiết bị mới vẫn phải cấp quyền.
+- Mỗi lần đăng nhập phải xác nhận vị trí gần đúng. Thiết bị mới còn phải nhập OTP gửi qua email; chỉ sau khi OTP và vị trí hợp lệ, phiên mới được kích hoạt và mọi token của thiết bị cũ bị thu hồi.
 - Thiết lập PIN giao dịch; PIN chỉ được lưu dưới dạng hash.
 - Đăng ký và xác thực khuôn mặt bằng OpenCV Zoo SFace + YuNet chạy local; ngưỡng mặc định hiện tại là 70%.
 - Tài khoản Timi dùng số điện thoại làm số tài khoản.
@@ -56,16 +56,16 @@ Timi là ứng dụng ngân hàng mô phỏng tập trung vào việc phát hi�
 ### Scam Call Guardian realtime
 
 - Scam Guardian chạy ngầm trong MainLayout sau khi người dùng đăng nhập và chấp nhận quyền microphone; không cần mở một trang riêng.
-- Một WebSocket giữ trong suốt phiên; MediaRecorder phát data event theo timeslice, gom thành đoạn audio tự động khoảng 3 giây rồi chỉ gửi đoạn có voice để nhận transcript/risk realtime. Recorder tự phục hồi nếu trình duyệt chuyển sang trạng thái inactive.
+- Một WebSocket giữ trong suốt phiên; microphone ưu tiên echo cancellation, khử nhiễu, auto gain và mono. VAD chỉ gửi đoạn có voice; một câu được chốt sau khoảng lặng ngắn (tối thiểu 1,1 giây, tối đa 5 giây) thay vì cắt cứng theo 3 giây. Recorder tự phục hồi nếu trình duyệt chuyển sang trạng thái inactive.
 - Ưu tiên Groq Whisper server-side STT (`GUARDIAN_STT_ENABLED=true`, mặc định `whisper-large-v3`); metadata `verbose_json` và bộ lọc câu outro/quảng bá YouTube phổ biến được dùng để bỏ các đoạn im lặng/hallucination trước khi đưa vào risk engine. Nếu provider trả lỗi/rỗng, browser SpeechRecognition tự chuyển sang fallback khi trình duyệt hỗ trợ. Audio chunk chỉ tồn tại trong bộ nhớ xử lý và không được lưu.
-- Backend giữ conversation state trong session và gửi transcript vào Guardian Risk Agent (Groq). Agent tự quyết định `risk_score`, `risk_level`, danh sách tín hiệu, ngưỡng ngữ cảnh và `recommended_action` (`CONTINUE`, `MONITOR`, `PAUSE`, `STOP`) rồi trả về JSON có schema giới hạn (kèm `decision_confidence` từ Phase 1).
+- Backend chỉ giữ cửa sổ 12 lượt thoại gần nhất (xấp xỉ 15–30 giây) trong bộ nhớ để Agent nhận ra tổ hợp dấu hiệu theo ngữ cảnh, thay vì suy luận từ một từ khóa đơn lẻ. Agent tự quyết định `risk_score`, `risk_level`, danh sách tín hiệu, ngưỡng ngữ cảnh và `recommended_action` (`CONTINUE`, `MONITOR`, `PAUSE`, `STOP`) rồi trả về JSON có schema giới hạn (kèm `decision_confidence` từ Phase 1).
 - Backend không tính lại ngưỡng và không để LLM gọi tool: backend chỉ validate/lưu quyết định, hiển thị cảnh báo và thực thi chặn giao dịch khi agent trả về `STOP`. Nếu agent/STT không khả dụng, hệ thống fail-closed bằng một quyết định tạm dừng rõ ràng để không bỏ lọt giao dịch nguy hiểm.
 - Guardian agent có retry cho lỗi mạng/429/5xx; một lỗi đơn lẻ chỉ chuyển phiên sang `PAUSE` và không bật cảnh báo scam. Sau ba lỗi liên tiếp, backend chuyển sang `STOP` fail-closed và giữ chặn đến khi phiên gọi kết thúc.
 - Mini Timi tự mở khung hội thoại và gửi cảnh báo có risk score, tín hiệu phát hiện và hướng dẫn dừng cuộc gọi.
-- Guardian chạy nền trong toàn bộ luồng sử dụng; các chỉ số microphone, recorder, chunk/ACK, STT và risk không hiển thị trong layout để giữ giao diện gọn, nhưng luồng realtime và cảnh báo vẫn hoạt động.
+- Guardian chạy nền trong toàn bộ luồng sử dụng; các chỉ số microphone, recorder, chunk/ACK, STT và risk không hiển thị trong layout để giữ giao diện gọn, nhưng luồng realtime và cảnh báo vẫn hoạt động. Bảng chẩn đoán ngắn (3 transcript gần nhất, metric STT/Agent) chỉ mở khi nhấn đồng thời `M` + `T`.
 - Transcript chỉ lưu vào conversation_segments khi người dùng bật consent; risk events/signals vẫn được lưu để audit nhưng không lưu text bằng chứng nếu chưa consent.
 - Critical alert được lưu vào scam_alerts cùng thời điểm gửi WebSocket để audit/hiển thị lại sau này.
-- Speaker diarization server là adapter kế tiếp; giao thức WebSocket hiện tại đã tách riêng để bổ sung mà không ảnh hưởng UI.
+- Hệ thống chưa xác minh danh tính hay tự tách người nói (speaker diarization). Transcript chỉ là dữ liệu hỗ trợ phát hiện rủi ro; giao thức WebSocket đã tách riêng để có thể bổ sung diarization sau này mà không ảnh hưởng UI.
 
 Guardian signal catalog (offline evaluator; production threshold belongs to the agent)
 
@@ -203,7 +203,7 @@ FastAPI (src/app)
 | tests/ | Unit/integration tests |
 | eval/ | Manual cases và kết quả đánh giá |
 | prompts/ | Versioned Guardian system prompts |
-| ARCHITECTURE.md | Sơ đồ Mermaid và safety boundary |
+| ARCHITECTURE.md | Luồng hoạt động, sơ đồ Mermaid và safety boundary |
 
 > Lưu ý: src/api, src/pages, src/models, src/config.py và một số src/routers là code/flow legacy. Chúng không được mount bởi src/app/main.py. Tính năng mới nên đặt trong src/app và frontend/src.
 
@@ -243,6 +243,7 @@ Không commit .env. Các biến quan trọng:
 | DATABASE_URL_UNPOOLED | Nên có | Direct URL cho Alembic; hostname Neon không có -pooler |
 | DATABASE_SCHEMA | Có | Schema hiện dùng là antiscam |
 | JWT_SECRET_KEY | Có | Khóa ký JWT; production phải thay secret mặc định |
+| CARD_ENCRYPTION_KEY | Production | Khóa riêng để mã hóa dữ liệu thẻ mô phỏng; không dùng chung JWT |
 | CORS_ORIGINS | Có | Origin frontend, phân tách bằng dấu phẩy, không có slash cuối |
 | GROQ_API_KEY | Cho chat + Guardian | Key server-side cho Timi Assistant và Guardian Risk Agent |
 | GROQ_MODEL_NAME | Cho chat | Mặc định openai/gpt-oss-20b |
@@ -262,12 +263,13 @@ Không commit .env. Các biến quan trọng:
 | FACE_SIMILARITY_THRESHOLD | Không | Ngưỡng mặc định 0.70 |
 | FACE_MODEL_PRELOAD | Không | true preload model; false lazy-load |
 | CLOUDINARY_* | Tuỳ chọn | Upload avatar |
+| EMAIL_*, BREVO_API_KEY | Có cho đăng nhập | Brevo Transactional Email API qua HTTPS với API key và sender đã xác minh; tương thích Render Free |
 | LANGCHAIN_*, AI_LOG_* | Tuỳ chọn | Tracing/logging local hoặc production |
 
 Tạo secret ngẫu nhiên:
 
 ~~~powershell
-.\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ~~~
 
 RISK_TELEMETRY_HASH_KEY dùng HMAC để pseudonymize IP/device trước khi lưu, không phải khóa mã hóa và không dùng chung với JWT_SECRET_KEY. Không đặt placeholder ở production và không in secret ra log.
@@ -289,7 +291,7 @@ python -m alembic upgrade head
 python -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
 ~~~
 
-Nếu PowerShell chặn activate script, bỏ qua activate và gọi trực tiếp .\.venv\Scripts\python.exe.
+Các lệnh bên dưới giả định virtual environment đã được kích hoạt.
 
 - API root: http://localhost:8000/
 - Swagger: http://localhost:8000/docs
@@ -313,7 +315,7 @@ VITE_API_URL=http://localhost:8000/api
 ### Tài khoản demo
 
 1. Đăng ký với số điện thoại đúng 10 chữ số.
-2. Đăng nhập và cấp quyền vị trí.
+2. Đăng nhập; thiết bị mới nhập OTP email, sau đó cấp quyền vị trí.
 3. Thiết lập PIN và (nếu cần) enroll Face ID.
 4. Dùng tài khoản Timi khác để thử chuyển tiền nội bộ; bank code demo là TIMI.
 
@@ -337,7 +339,7 @@ docker compose -f docker-compose.dev.yml logs -f backend
 
 Development compose bind-mount source, backend chạy Uvicorn reload và frontend chạy Vite. Truy cập frontend http://localhost:5173, backend http://localhost:8000.
 
-Sau khi sửa requirements.txt, Dockerfile hoặc biến build frontend:
+Sau khi sửa `requirements.txt`, Dockerfile hoặc biến build frontend:
 
 ~~~powershell
 docker compose -f docker-compose.dev.yml up -d --build --force-recreate
@@ -369,9 +371,9 @@ Alembic là nguồn quản lý schema duy nhất; app không tự create_all khi
 4. Chạy migration trước khi mở frontend.
 
 ~~~powershell
-.\.venv\Scripts\python.exe -m alembic current
-.\.venv\Scripts\python.exe -m alembic heads
-.\.venv\Scripts\python.exe -m alembic upgrade head
+python -m alembic current
+python -m alembic heads
+python -m alembic upgrade head
 ~~~
 
 Kiểm tra readiness:
@@ -383,8 +385,8 @@ Invoke-RestMethod http://localhost:8000/health/ready
 Tạo migration mới sau khi review model:
 
 ~~~powershell
-.\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "describe change"
-.\.venv\Scripts\python.exe -m alembic upgrade head
+python -m alembic revision --autogenerate -m "describe change"
+python -m alembic upgrade head
 ~~~
 
 Không sửa tay revision đã chạy trên Neon. Nếu gặp Can't locate revision, checkout phải có đủ file trong alembic/versions; kiểm tra git status, git pull và alembic heads trước khi can thiệp DB.
@@ -394,7 +396,7 @@ Không sửa tay revision đã chạy trên Neon. Nếu gặp Can't locate revis
 Đặt file CSV, TXT hoặc JSON trong data/uploads/, sau đó chạy từ repository root:
 
 ~~~powershell
-.\.venv\Scripts\python.exe scripts/import_url_blacklist.py data/uploads/malicious_urls.csv data/uploads/scamvn_urls.csv
+python scripts/import_url_blacklist.py data/uploads/malicious_urls.csv data/uploads/scamvn_urls.csv
 ~~~
 
 Script chuẩn hóa hostname, loại duplicate, lưu entity_type=url và chỉ tạo entry active mới. Chạy lại không tạo bản ghi trùng. QR scanner gọi POST /api/v1/url-safety/check; URL bị blacklist không được mở từ giao diện.
@@ -402,7 +404,7 @@ Script chuẩn hóa hostname, loại duplicate, lưu entity_type=url và chỉ t
 ## Luồng sử dụng nhanh
 
 ~~~text
-Đăng ký → đăng nhập → cấp quyền vị trí → thiết lập PIN/Face ID
+Đăng ký → đăng nhập → OTP thiết bị mới → cấp quyền vị trí → thiết lập PIN/Face ID
       ↓
 Chọn Chuyển tiền hoặc QR
       ↓
@@ -422,8 +424,10 @@ Các API dưới đây (trừ health/root) nằm dưới /api/v1 và thường y
 
 | Method | Endpoint | Mục đích |
 |---|---|---|
-| POST | /auth/register | Tạo tài khoản Timi, phone 10 chữ số |
-| POST | /auth/login | Đăng nhập và nhận JWT |
+| POST | /auth/register/request-otp | Kiểm tra dữ liệu và gửi OTP đăng ký |
+| POST | /auth/register/verify-otp | Xác minh OTP, tạo tài khoản rồi yêu cầu đăng nhập |
+| POST | /auth/login | Xác minh thông tin đăng nhập; thiết bị mới nhận challenge OTP |
+| POST | /auth/login/device/verify | Xác minh OTP email và nhận token chờ location |
 | POST | /auth/login/location | Ghi nhận vị trí gần đúng sau login |
 | PUT | /auth/face/enrollment | Enroll Face ID |
 | POST | /auth/face/verify | Verify Face ID |
@@ -449,8 +453,8 @@ Swagger đầy đủ tại http://localhost:8000/docs.
 Từ repository root:
 
 ~~~powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_services\test_timi_assistant_scope.py tests\test_services\test_timi_bank.py tests\test_services\test_url_blacklist.py tests\test_agents\test_risk_rules.py tests\test_agents\test_behavioral_risk_rules.py tests\test_agents\test_blacklist_policy.py -q
-.\.venv\Scripts\python.exe -m ruff check src\app\api\assistant.py src\app\schemas\assistant.py src\app\services\timi_assistant.py tests\test_services\test_timi_assistant_scope.py
+python -m pytest tests\test_services\test_timi_assistant_scope.py tests\test_services\test_timi_bank.py tests\test_services\test_url_blacklist.py tests\test_agents\test_risk_rules.py tests\test_agents\test_behavioral_risk_rules.py tests\test_agents\test_blacklist_policy.py -q
+python -m ruff check src\app\api\assistant.py src\app\schemas\assistant.py src\app\services\timi_assistant.py tests\test_services\test_timi_assistant_scope.py
 npm --prefix frontend run build
 npm --prefix frontend run lint
 Get-Content eval/manual_cases.md
@@ -461,7 +465,7 @@ Nhóm smoke test canonical hiện chạy độc lập với DB và bao phủ Tim
 Repository vẫn chứa một số test legacy trong tests/test_api và tests/test_services/test_audit.py. Chúng tham chiếu async stack/route cũ và có thể cần asyncpg cùng database test riêng; vì vậy không gộp vào smoke test canonical. Có thể chạy toàn bộ để audit khi đã chuẩn bị môi trường legacy:
 
 ~~~powershell
-.\.venv\Scripts\python.exe -m pytest tests -q
+python -m pytest tests -q
 ~~~
 
 ## Troubleshooting
@@ -545,8 +549,8 @@ CORS_ORIGINS phải chứa đúng origin frontend, không có slash cuối. Khi 
 
 ## Tài liệu liên quan
 
-- ARCHITECTURE.md — component/data flow và safety boundary.
-- SETUP.md — hướng dẫn Docker/Neon chi tiết hơn.
+- ARCHITECTURE.md — luồng hoạt động, component/data flow và safety boundary.
+- docs/SETUP.md — hướng dẫn Docker, Neon, Render và Android chi tiết hơn.
 - eval/manual_cases.md — manual cases (transaction + Guardian).
 - eval/results/report.md — báo cáo evaluation mới nhất (100% metrics).
 - eval/results/ — raw JSON baseline runs.

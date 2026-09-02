@@ -111,10 +111,15 @@ export interface TransactionHistoryPage {
 
 export interface TransactionHistorySummary {
   completed_outgoing_today: number;
+  daily_limit: number;
+  remaining_daily_limit: number;
   total_transactions: number;
 }
 
 export interface TransactionSecuritySummary {
+  total_users: number;
+  total_transactions: number;
+  total_completed_volume: number;
   blocked_transactions: number;
 }
 

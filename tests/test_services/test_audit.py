@@ -64,6 +64,7 @@ SAMPLE_TX = {
 
 # ── Unit tests: PDPA masking ─────────────────────────────────────────────────
 
+
 class TestPdpaMasking:
     def test_mask_account_number_standard(self):
         result = mask_account_number("0123456789")
@@ -112,11 +113,13 @@ class TestPdpaMasking:
 
 # ── Integration tests: AuditLog via DB ──────────────────────────────────────
 
+
 class TestAuditLogContent:
     @pytest.mark.asyncio
     async def test_audit_log_created_after_analyze(self, test_db: AsyncSession, client: AsyncClient):
         """Gọi route analyze → phải có ít nhất 1 AuditLog trong DB."""
         from sqlalchemy import select
+
         from src.services.audit import log_action
         from src.services.pdpa import mask_transaction_metadata
 
@@ -125,7 +128,7 @@ class TestAuditLogContent:
         masked["warning_level"] = "suspicious"
         masked["risk_score"] = 0.6
 
-        entry = await log_action(
+        await log_action(
             db=test_db,
             action="POST /api/v1/transactions/analyze",
             resource_type="transaction",
@@ -165,13 +168,9 @@ class TestAuditLogContent:
         metadata_str = json.dumps(metadata)
 
         # PDPA: số tài khoản đầy đủ không được có trong log
-        assert "0123456789" not in metadata_str, (
-            "metadata_json chứa số tài khoản đầy đủ — vi phạm PDPA!"
-        )
+        assert "0123456789" not in metadata_str, "metadata_json chứa số tài khoản đầy đủ — vi phạm PDPA!"
         # PDPA: tên đầy đủ không được có trong log
-        assert "Nguyễn Văn A" not in metadata_str, (
-            "metadata_json chứa tên đầy đủ — vi phạm PDPA!"
-        )
+        assert "Nguyễn Văn A" not in metadata_str, "metadata_json chứa tên đầy đủ — vi phạm PDPA!"
 
     @pytest.mark.asyncio
     async def test_audit_failure_does_not_raise(self, test_db: AsyncSession):

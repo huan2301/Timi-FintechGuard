@@ -59,47 +59,7 @@ type RecipientLookupState =
   | { status: "error"; message: string };
 
 const banks = [
-  { code: "ABB", name: "ABBank" },
-  { code: "ACB", name: "ACB" },
-  { code: "AGRIBANK", name: "Agribank" },
-  { code: "BAB", name: "Bac A Bank" },
-  { code: "VPB", name: "VPBank" },
-  { code: "BIDV", name: "BIDV" },
-  { code: "BVB", name: "BaoViet Bank" },
-  { code: "CAKE", name: "Cake by VPBank" },
-  { code: "CIMB", name: "CIMB Vietnam" },
-  { code: "CTG", name: "VietinBank" },
-  { code: "EIB", name: "Eximbank" },
-  { code: "GPB", name: "GPBank" },
-  { code: "HDB", name: "HDBank" },
-  { code: "HSBC", name: "HSBC Vietnam" },
-  { code: "IVB", name: "Indovina Bank" },
-  { code: "KBANK", name: "Kasikornbank" },
-  { code: "KLB", name: "KienlongBank" },
-  { code: "LPB", name: "LPBank" },
-  { code: "MBB", name: "MB Bank" },
-  { code: "MSB", name: "MSB" },
-  { code: "NAB", name: "Nam A Bank" },
-  { code: "OCB", name: "OCB" },
-  { code: "PGB", name: "PGBank" },
-  { code: "PVCB", name: "PVcomBank" },
-  { code: "SCB", name: "SCB" },
-  { code: "SCVN", name: "Standard Chartered Vietnam" },
-  { code: "SEAB", name: "SeABank" },
-  { code: "SGB", name: "Saigonbank" },
-  { code: "SHB", name: "SHB" },
-  { code: "SHINHAN", name: "Shinhan Bank" },
-  { code: "STB", name: "Sacombank" },
-  { code: "TCB", name: "Techcombank" },
-  { code: "TIMO", name: "Timo" },
   { code: "TIMI", name: "Timi Bank" },
-  { code: "TPB", name: "TPBank" },
-  { code: "UBANK", name: "Ubank by VPBank" },
-  { code: "UOB", name: "UOB Vietnam" },
-  { code: "VAB", name: "Viet A Bank" },
-  { code: "VCB", name: "Vietcombank" },
-  { code: "VIB", name: "VIB" },
-  { code: "WOORI", name: "Woori Bank Vietnam" },
 ];
 
 const amountInputFormatter = new Intl.NumberFormat("vi-VN", {
@@ -157,8 +117,7 @@ export default function TransferPage() {
     queryFn: () => transactionsApi.getSecuritySummary(),
     staleTime: 30_000,
   });
-  const displayedBlockedTransactions =
-    (securitySummaryQuery.data?.blocked_transactions ?? 0) * 100;
+  const displayedBlockedTransactions = securitySummaryQuery.data?.blocked_transactions ?? 0;
   const displayedBlockedTransactionsLabel = formatProtectionCount(
     displayedBlockedTransactions,
   );
@@ -176,11 +135,13 @@ export default function TransferPage() {
   });
   const [isSavedRecipientsOpen, setSavedRecipientsOpen] = useState(false);
   const savedRecipients = savedRecipientsQuery.data ?? [];
+
   const visibleSavedRecipients = savedRecipients.slice(0, 4);
 
-  const dailyTransferLimit = 100_000_000;
   const completedToday = dailySummaryQuery.data?.completed_outgoing_today ?? 0;
-  const remainingDailyLimit = Math.max(0, dailyTransferLimit - completedToday);
+  const dailyTransferLimit = dailySummaryQuery.data?.daily_limit ?? 100_000_000;
+  const remainingDailyLimit = dailySummaryQuery.data?.remaining_daily_limit
+    ?? Math.max(0, dailyTransferLimit - completedToday);
 
   useEffect(() => {
     void fetchMe();
@@ -228,6 +189,7 @@ export default function TransferPage() {
     : null;
   const requestedAmount = Number(form.amount || 0);
   const isInsufficientBalance = availableBalance !== null && requestedAmount > availableBalance;
+  const isOverDailyLimit = dailySummaryQuery.isSuccess && requestedAmount > remainingDailyLimit;
   const balanceShortfall = isInsufficientBalance
     ? requestedAmount - (availableBalance ?? 0)
     : 0;
@@ -555,12 +517,12 @@ export default function TransferPage() {
           });
           releaseSavedRecipientSelection();
         })
-        .catch((error: any) => {
+        .catch((error: unknown) => {
           if (cancelled) return;
           setRecipientLookupState({
             status: "error",
             message:
-              error.response?.data?.detail ||
+              getApiErrorDetail(error) ||
               "Không thể tra cứu tên tài khoản. Vui lòng thử lại.",
           });
           releaseSavedRecipientSelection();
@@ -693,12 +655,20 @@ export default function TransferPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+    if (isOverDailyLimit) {
+      setTransferError(`Số tiền vượt hạn mức còn lại hôm nay (${formatVnd(remainingDailyLimit)}).`);
+      return;
+    }
     setTransferError(null);
     setBalanceCheckAttempted(false);
     setStep("review");
   };
   const handleRiskCheck = () => {
     setBalanceCheckAttempted(true);
+    if (isOverDailyLimit) {
+      setTransferError(`Số tiền vượt hạn mức còn lại hôm nay (${formatVnd(remainingDailyLimit)}).`);
+      return;
+    }
     if (isInsufficientBalance) {
       setTransferError(
         "Số dư khả dụng không đủ cho số tiền đã nhập. Hãy giảm số tiền để tiếp tục.",
@@ -762,7 +732,7 @@ export default function TransferPage() {
     form.recipient_name &&
     form.recipient_lookup_token &&
     form.amount &&
-    form.bank_code,
+    form.bank_code && !isOverDailyLimit,
   );
   const recipientNeedsCaution =
     recipientLookupState.status === "success" &&
@@ -864,6 +834,11 @@ export default function TransferPage() {
               />
             </div>
           </header>
+
+          <div role="note" className="mx-4 mb-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 sm:mx-6 lg:mx-8">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            Chuyển tiền hiện chỉ khả dụng giữa hai tài khoản Timi. Liên ngân hàng bị khóa cho đến khi có cổng quyết toán thật.
+          </div>
 
           {/* ===== PROGRESS STEPS ===== */}
           {(() => {
@@ -1297,6 +1272,11 @@ export default function TransferPage() {
                       ),
                     )}
                   </div>
+                  {isOverDailyLimit && (
+                    <p className="-mt-3 mb-5 text-sm font-medium text-rose-600" role="alert">
+                      Số tiền vượt hạn mức còn lại hôm nay ({formatVnd(remainingDailyLimit)}).
+                    </p>
+                  )}
 
                   {/* Message */}
                   <div className="mb-6">
@@ -1366,10 +1346,10 @@ export default function TransferPage() {
                         AI Protection
                       </h3>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        Giao dịch của bạn được bảo vệ bằng công nghệ AI tiên tiến.
+                        Timi phân tích tín hiệu rủi ro trước khi bạn xác nhận.
                       </p>
                       <p className="mt-2 text-xs font-semibold text-emerald-600">
-                        Đã chặn {displayedBlockedTransactionsLabel} giao dịch rủi ro cao
+                        Đã dừng {displayedBlockedTransactionsLabel} giao dịch rủi ro cao
                       </p>
                       <button
                         type="button"
@@ -1461,7 +1441,7 @@ export default function TransferPage() {
                   <Star className="w-5 h-5 text-white/50 mb-2" />
                   <p className="text-sm font-bold mb-1">Timi bảo vệ bạn</p>
                   <p className="text-xs text-violet-100 leading-relaxed">
-                    Đã chặn {displayedBlockedTransactionsLabel} giao dịch rủi ro cao
+                    Đã dừng {displayedBlockedTransactionsLabel} giao dịch rủi ro cao
                   </p>
                 </div>
               </div>
@@ -1935,10 +1915,10 @@ export default function TransferPage() {
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">
-            Chuyển tiền thành công!
+            Chuyển tiền nội bộ thành công!
           </h2>
           <p className="text-slate-500 mb-6">
-            {formatMoney(form.amount)} đã được chuyển đến {form.recipient_name}
+            {`${formatMoney(form.amount)} đã được ghi có cho ${form.recipient_name}.`}
           </p>
           <div className="space-y-3">
             <button

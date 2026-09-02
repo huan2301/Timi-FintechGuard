@@ -55,9 +55,7 @@ def test_supervisor_can_coordinate_explicit_plan(monkeypatch) -> None:
     supervisor = MultiAgentSupervisor(registry)
     monkeypatch.setattr(supervisor_module, "record_agent_call", lambda *_args, **_kwargs: None)
 
-    executions = supervisor.coordinate(
-        [AgentCall(agent_id=AgentId.CHAT_SUPPORT, payload="bounded-context")]
-    )
+    executions = supervisor.coordinate([AgentCall(agent_id=AgentId.CHAT_SUPPORT, payload="bounded-context")])
 
     assert len(executions) == 1
     assert executions[0].agent_id == AgentId.CHAT_SUPPORT

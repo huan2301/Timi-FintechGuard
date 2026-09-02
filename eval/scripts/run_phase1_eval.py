@@ -21,7 +21,7 @@ import os
 import sys
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -62,12 +62,16 @@ def build_state(transcript: list[dict]) -> GuardianConversationState:
     return state
 
 
-def predict(state: GuardianConversationState, latest: str) -> tuple[Any, str | None]:
+def predict(
+    state: GuardianConversationState,
+    latest: str,
+    mode: str = EVAL_MODE,
+) -> tuple[Any, str | None]:
     """Returns (GuardianRiskResult | None, error)."""
     try:
-        if EVAL_MODE == "rule":
+        if mode == "rule":
             return analyze_guardian_state(state), None
-        if EVAL_MODE == "hybrid":
+        if mode == "hybrid":
             if analyze_hybrid is None:
                 return None, "hybrid module not available"
             result, _meta = analyze_hybrid(state, latest)
@@ -80,14 +84,14 @@ def predict(state: GuardianConversationState, latest: str) -> tuple[Any, str | N
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
+def evaluate_case(case: dict[str, Any], mode: str = EVAL_MODE) -> dict[str, Any]:
     expected = case["expected"]
     transcript = case["transcript"]
     state = build_state(transcript)
     latest = transcript[-1].get("text", "") if transcript else ""
 
     start = time.perf_counter()
-    result, error = predict(state, latest)
+    result, error = predict(state, latest, mode)
     latency_ms = round((time.perf_counter() - start) * 1000, 1)
 
     schema_ok = result is not None
@@ -99,9 +103,7 @@ def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
         score_in_range = low <= result.risk_score <= high
         detected = {s.signal_type for s in result.signals}
         signal_ok = all(m in detected for m in expected.get("must_have_signals", []))
-        signal_ok = signal_ok and all(
-            m not in detected for m in expected.get("must_not_have_signals", [])
-        )
+        signal_ok = signal_ok and all(m not in detected for m in expected.get("must_not_have_signals", []))
 
     return {
         "id": case["id"],
@@ -151,11 +153,7 @@ def compute_metrics(results: list[dict]) -> dict[str, Any]:
     n_fail = total - n_pass - n_error
 
     safe = [r for r in results if r.get("category") == "safe"]
-    fp_safe = sum(
-        1
-        for r in safe
-        if r["predicted_action"] in ("PAUSE", "STOP")
-    )
+    fp_safe = sum(1 for r in safe if r["predicted_action"] in ("PAUSE", "STOP"))
     fp_rate_safe = round(fp_safe / len(safe), 4) if safe else None
 
     latencies = sorted(r["latency_ms"] for r in results if r["schema_ok"])
@@ -163,9 +161,7 @@ def compute_metrics(results: list[dict]) -> dict[str, Any]:
     p50 = latencies[len(latencies) // 2] if latencies else None
     p95 = latencies[min(len(latencies) - 1, int(len(latencies) * 0.95))] if latencies else None
 
-    by_cat: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"total": 0, "pass": 0, "fail": 0, "error": 0}
-    )
+    by_cat: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "pass": 0, "fail": 0, "error": 0})
     for r in results:
         cat = r.get("category") or "unknown"
         by_cat[cat]["total"] += 1
@@ -182,9 +178,7 @@ def compute_metrics(results: list[dict]) -> dict[str, Any]:
         "fail_count": n_fail,
         "error_count": n_error,
         "schema_ok_rate": round(schema_ok / total, 4) if total else 0,
-        "action_accuracy": round(sum(1 for r in results if r["action_match"]) / total, 4)
-        if total
-        else 0,
+        "action_accuracy": round(sum(1 for r in results if r["action_match"]) / total, 4) if total else 0,
         "overall_pass_rate": round(n_pass / total, 4) if total else 0,
         "false_positive_rate_safe": fp_rate_safe,
         "f1_STOP": f1_for_action(results, "STOP"),
@@ -195,17 +189,10 @@ def compute_metrics(results: list[dict]) -> dict[str, Any]:
         "p50_latency_ms": p50,
         "p95_latency_ms": p95,
         "action_distribution": dict(
-            Counter(
-                r["predicted_action"] if r["predicted_action"] else "None"
-                for r in results
-            )
+            Counter(r["predicted_action"] if r["predicted_action"] else "None" for r in results)
         ),
         "by_category": dict(by_cat),
-        "error_cases": [
-            {"id": r["id"], "error": (r["error"] or "")[:120]}
-            for r in results
-            if r["error"]
-        ],
+        "error_cases": [{"id": r["id"], "error": (r["error"] or "")[:120]} for r in results if r["error"]],
         "fail_cases": [
             {
                 "id": r["id"],
@@ -227,8 +214,6 @@ def main() -> None:
     parser.add_argument("--mode", default=EVAL_MODE, choices=["agent", "hybrid", "rule"])
     args = parser.parse_args()
     mode = args.mode
-    global EVAL_MODE
-    EVAL_MODE = mode
 
     print("=" * 60)
     print("Phase 1 – Guardian Evaluation")
@@ -240,14 +225,14 @@ def main() -> None:
     results = []
     for i, case in enumerate(dataset, 1):
         print(f"[{i}/{len(dataset)}] {case['id']} ...", end=" ", flush=True)
-        res = evaluate_case(case)
+        res = evaluate_case(case, mode)
         status = "ERROR" if res["error"] else ("PASS" if res["overall_pass"] else "FAIL")
         print(f"{status} action={res['predicted_action']} {res['latency_ms']}ms")
         results.append(res)
         time.sleep(1.2)
 
     metrics = compute_metrics(results)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     report = {
         "phase": "1",
         "timestamp_utc": ts,

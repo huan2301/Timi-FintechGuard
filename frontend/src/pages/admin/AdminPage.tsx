@@ -8,7 +8,7 @@ import FaceVerificationModal, { type FaceMatchResult } from "@/components/auth/F
 import ContentManagementTab from "@/pages/admin/ContentManagementTab";
 import { ProfileNotificationBell } from "@/pages/account/ProfilePage";
 import { useNavigate } from "react-router-dom";
-//Đã check admin page
+import { getApiErrorDetail } from "@/utils/apiError";
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -22,9 +22,7 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
-  Filter,
   Download,
-  MoreVertical,
   FileClock,
   RefreshCw,
   Activity,
@@ -42,6 +40,7 @@ import {
   Megaphone,
   Eye,
   Files,
+  type LucideIcon,
 } from "lucide-react";
 
 type TabType =
@@ -87,6 +86,17 @@ type AdminStats = {
   recommendation_compliance_rate: number | null;
   blacklist_size: number;
   pattern_count: number;
+};
+
+type AdminRuntimeSettings = {
+  app_env: "development" | "production" | "test";
+  guardian_agent_enabled: boolean;
+  guardian_stt_enabled: boolean;
+  llm_explanation_enabled: boolean;
+  task_navigator_agent_enabled: boolean;
+  rag_enabled: boolean;
+  face_model_preload: boolean;
+  risk_rules_version: string;
 };
 
 type AdminAgentMetric = {
@@ -152,10 +162,29 @@ type BlacklistPage = {
   next_cursor: string | null;
 };
 
+async function fetchAllAdminRows<T>(
+  path: string,
+  params: Record<string, string | number> = {},
+): Promise<T[]> {
+  const pageSize = 500;
+  const rows: T[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = (
+      await axiosInstance.get<T[]>(path, {
+        params: { ...params, limit: pageSize, offset },
+      })
+    ).data;
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+    offset += page.length;
+  }
+}
+
 function useAdminTransactions() {
   return useQuery({
     queryKey: ["admin-transactions"],
-    queryFn: async () => (await axiosInstance.get<AdminTransaction[]>("/v1/admin/transactions", { params: { limit: 100 } })).data,
+    queryFn: () => fetchAllAdminRows<AdminTransaction>("/v1/admin/transactions"),
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -207,7 +236,7 @@ function FalconCard({
   );
 }
 
-function IconBadge({ icon: Icon, tone }: { icon: any; tone: "primary" | "success" | "warning" | "danger" | "info" | "violet" }) {
+function IconBadge({ icon: Icon, tone }: { icon: LucideIcon; tone: "primary" | "success" | "warning" | "danger" | "info" | "violet" }) {
   const toneClass =
     tone === "success"
       ? "bg-emerald-50 text-emerald-600"
@@ -607,7 +636,7 @@ function AuditTab() {
   const [liveEnabled, setLiveEnabled] = useState(true);
   const auditQuery = useQuery<AdminAuditLog[]>({
     queryKey: ["admin-audit-logs", action],
-    queryFn: async () => (await axiosInstance.get<AdminAuditLog[]>("/v1/admin/audit-logs", { params: { limit: 200, ...(action ? { action } : {}) } })).data,
+    queryFn: () => fetchAllAdminRows<AdminAuditLog>("/v1/admin/audit-logs", action ? { action } : {}),
     refetchInterval: liveEnabled ? 5000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
@@ -620,7 +649,7 @@ function AuditTab() {
     refetchOnWindowFocus: true,
   });
 
-  const logs = auditQuery.data ?? [];
+  const logs = useMemo(() => auditQuery.data ?? [], [auditQuery.data]);
   const actions = Array.from(new Set(logs.map((log) => log.action))).sort();
   const now = Date.now();
   const recentLogs = useMemo(
@@ -752,7 +781,7 @@ function UsersTab({ searchQuery, setSearchQuery }: { searchQuery: string; setSea
   const [undeletableUserIds, setUndeletableUserIds] = useState<Set<string>>(new Set());
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
-    queryFn: async () => (await axiosInstance.get<AdminUser[]>("/v1/admin/users")).data,
+    queryFn: () => fetchAllAdminRows<AdminUser>("/v1/admin/users"),
   });
   const updateUser = useMutation({
     mutationFn: async ({ id, path, body }: { id: string; path: "role" | "status"; body: object }) =>
@@ -766,10 +795,10 @@ function UsersTab({ searchQuery, setSearchQuery }: { searchQuery: string; setSea
       setConfirmUser(null);
       void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     },
-    onError: (error: any, userId: string) => {
+    onError: (error: unknown, userId: string) => {
       setUndeletableUserIds((current) => new Set(current).add(userId));
       setConfirmUser(null);
-      const detail = error?.response?.data?.detail;
+      const detail = getApiErrorDetail(error);
       setDeleteNotice(typeof detail === "string" ? detail : "Không thể xóa user vì tài khoản đang có dữ liệu cần giữ lại.");
     },
   });
@@ -878,11 +907,11 @@ function OverviewTab({ transactionsQuery, onViewAll }: { transactionsQuery: Admi
   // Same query key as UsersTab so React Query shares the cache instead of double-fetching.
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
-    queryFn: async () => (await axiosInstance.get<AdminUser[]>("/v1/admin/users")).data,
+    queryFn: () => fetchAllAdminRows<AdminUser>("/v1/admin/users"),
   });
 
   const liveStats = statsQuery.data;
-  const transactions = transactionsQuery.data ?? [];
+  const transactions = useMemo(() => transactionsQuery.data ?? [], [transactionsQuery.data]);
   const total = liveStats?.total_transactions ?? 0;
   const safeCount = (liveStats?.by_risk_level.safe ?? 0) + (liveStats?.by_risk_level.low ?? 0);
   const safeRate = total ? Math.round((safeCount / total) * 1000) / 10 : 0;
@@ -1242,9 +1271,6 @@ function TransactionsTab({ transactionsQuery, searchQuery, setSearchQuery }: { t
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
-            <Filter className="w-4 h-4 text-slate-600" />
-          </button>
           <button onClick={handleExport} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50" title="Xuất giao dịch đang hiển thị">
             <Download className="w-4 h-4 text-slate-600" />
           </button>
@@ -1295,9 +1321,6 @@ function TransactionsTab({ transactionsQuery, searchQuery, setSearchQuery }: { t
                     <p className="text-xs text-slate-400">{tx.id}</p>
                   </div>
                 </div>
-                <button className="p-1 hover:bg-slate-100 rounded-full">
-                  <MoreVertical className="w-4 h-4 text-slate-400" />
-                </button>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1326,11 +1349,37 @@ function TransactionsTab({ transactionsQuery, searchQuery, setSearchQuery }: { t
 // ===== BLACKLIST TAB =====
 function BlacklistTab({ searchQuery, setSearchQuery }: { searchQuery: string; setSearchQuery: (s: string) => void }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    entityType: "account" as "account" | "phone" | "email" | "url",
+    value: "",
+    bank: "",
+    source: "",
+  });
+  const [addError, setAddError] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [blacklistType, setBlacklistType] = useState<"all" | "account" | "phone" | "email" | "url">("all");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const queryClient = useQueryClient();
+  const addBlacklist = useMutation({
+    mutationFn: async () => axiosInstance.post("/v1/admin/blacklist", {
+      entity_type: addForm.entityType,
+      entity_value: addForm.value.trim(),
+      bank: addForm.entityType === "account" ? addForm.bank.trim() || null : null,
+      source: addForm.source.trim(),
+      risk_score: 0.95,
+    }),
+    onSuccess: async () => {
+      setShowAddModal(false);
+      setAddForm({ entityType: "account", value: "", bank: "", source: "" });
+      setAddError("");
+      await queryClient.invalidateQueries({ queryKey: ["admin-blacklist"] });
+    },
+    onError: (error: unknown) => {
+      const detail = getApiErrorDetail(error);
+      setAddError(typeof detail === "string" ? detail : "Không thể thêm bản ghi blacklist.");
+    },
+  });
   const deleteBlacklist = useMutation({
     mutationFn: async ({ entryId, faceVerificationToken }: { entryId: string; faceVerificationToken: string }) =>
       axiosInstance.delete(`/v1/admin/blacklist/${entryId}`, {
@@ -1533,35 +1582,66 @@ function BlacklistTab({ searchQuery, setSearchQuery }: { searchQuery: string; se
 
       {showAddModal && createPortal(
         <div className="fixed inset-0 z-[10000] flex min-h-screen items-start justify-center overflow-y-auto overscroll-contain bg-black/50 p-4 sm:items-center">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+          <form
+            className="bg-white rounded-2xl p-6 w-full max-w-sm"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setAddError("");
+              if (!addForm.value.trim() || !addForm.source.trim()) {
+                setAddError("Vui lòng nhập đầy đủ giá trị và lý do.");
+                return;
+              }
+              if (addForm.entityType === "account" && !addForm.bank.trim()) {
+                setAddError("Tài khoản ngân hàng cần có tên hoặc mã ngân hàng.");
+                return;
+              }
+              addBlacklist.mutate();
+            }}
+          >
             <h3 className="text-lg font-bold text-slate-800 mb-4">Thêm vào Blacklist</h3>
             <div className="space-y-3">
               <div>
                 <label className="text-sm text-gray-600 mb-1 block">Loại</label>
-                <select className="w-full p-2.5 bg-gray-50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                <select
+                  value={addForm.entityType}
+                  onChange={(event) => setAddForm((current) => ({
+                    ...current,
+                    entityType: event.target.value as typeof current.entityType,
+                    bank: event.target.value === "account" ? current.bank : "",
+                  }))}
+                  className="w-full p-2.5 bg-gray-50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
                   <option value="account">Tài khoản ngân hàng</option>
                   <option value="phone">Số điện thoại</option>
                   <option value="email">Email</option>
+                  <option value="url">URL / tên miền</option>
                 </select>
               </div>
               <div>
                 <label className="text-sm text-gray-600 mb-1 block">Giá trị</label>
-                <input type="text" className="w-full p-2.5 bg-gray-50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nhập giá trị..." />
+                <input required type="text" value={addForm.value} onChange={(event) => setAddForm((current) => ({ ...current, value: event.target.value }))} className="w-full p-2.5 bg-gray-50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder={addForm.entityType === "url" ? "example.com" : "Nhập giá trị..."} />
               </div>
+              {addForm.entityType === "account" && (
+                <div>
+                  <label className="text-sm text-gray-600 mb-1 block">Ngân hàng</label>
+                  <input required type="text" value={addForm.bank} onChange={(event) => setAddForm((current) => ({ ...current, bank: event.target.value }))} className="w-full p-2.5 bg-gray-50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ví dụ: TIMI, VCB..." />
+                </div>
+              )}
               <div>
                 <label className="text-sm text-gray-600 mb-1 block">Lý do</label>
-                <textarea className="w-full p-2.5 bg-gray-50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" rows={2} placeholder="Lý do thêm vào danh sách đen..." />
+                <textarea required value={addForm.source} onChange={(event) => setAddForm((current) => ({ ...current, source: event.target.value }))} className="w-full p-2.5 bg-gray-50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" rows={2} placeholder="Nguồn hoặc lý do thêm vào danh sách đen..." />
               </div>
+              {addError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{addError}</p>}
               <div className="flex gap-2 pt-2">
-                <button onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                <button type="button" onClick={() => { setShowAddModal(false); setAddError(""); }} className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
                   Hủy
                 </button>
-                <button onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
-                  Thêm
+                <button type="submit" disabled={addBlacklist.isPending} className="flex-1 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
+                  {addBlacklist.isPending ? "Đang thêm..." : "Thêm"}
                 </button>
               </div>
             </div>
-          </div>
+          </form>
         </div>,
         document.body,
       )}
@@ -1673,7 +1753,7 @@ function EmailTab() {
     }
     if (
       !window.confirm(
-        `Gửi email tới TẤT CẢ user có email trong hệ thống?\n\nTiêu đề: ${broadcast.subject}`,
+        `Gửi email tới các địa chỉ đã đồng ý nhận tin?\n\nTiêu đề: ${broadcast.subject}`,
       )
     ) {
       return;
@@ -1729,8 +1809,8 @@ function EmailTab() {
       setStatusMsg(
         data?.message ||
           (updateForm.sendNow
-            ? "Đã công bố và gửi mail tới toàn bộ user."
-            : "Đã lưu cập nhật (chưa gửi mail)."),
+            ? "Đã công bố và xếp hàng email cho người đã đồng ý nhận tin."
+            : "Đã công bố thông báo trong ứng dụng."),
       );
       setUpdateForm({ version: "", title: "", body: "", sendNow: true });
     } catch (err) {
@@ -1762,7 +1842,7 @@ function EmailTab() {
 
       <FalconCard
         title="Gửi email hàng loạt"
-        subtitle="Soạn thảo và gửi tới toàn bộ user có email trong hệ thống (SMTP)"
+        subtitle="Soạn thảo và gửi tới các địa chỉ đã đồng ý nhận tin"
         action={
           <SoftBadge tone="info">
             <span className="inline-flex items-center gap-1">
@@ -1774,7 +1854,7 @@ function EmailTab() {
       >
         <div className="space-y-4">
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            Người nhận: <span className="font-semibold text-slate-700">Tất cả user có email</span>
+            Người nhận: <span className="font-semibold text-slate-700">User bật thông báo khuyến mãi và người đăng ký newsletter</span>
           </div>
 
           <div>
@@ -1842,7 +1922,7 @@ function EmailTab() {
               ) : (
                 <Mail className="h-4 w-4" />
               )}
-              Gửi toàn bộ user
+              Gửi người đã đồng ý
             </button>
           </div>
         </div>
@@ -1850,7 +1930,7 @@ function EmailTab() {
 
       <FalconCard
         title="Cập nhật & cải tiến hệ thống"
-        subtitle="Công bố phiên bản mới — gửi mail cho toàn bộ user (SMTP)"
+        subtitle="Công bố trong ứng dụng, có thể gửi email cho người đã đồng ý nhận tin"
         action={
           <SoftBadge tone="success">
             <span className="inline-flex items-center gap-1">
@@ -1928,7 +2008,7 @@ function EmailTab() {
               />
             </button>
             <span className="text-sm text-slate-700">
-              Gửi email ngay cho toàn bộ user có email
+              Gửi email ngay cho người đã đồng ý nhận tin
             </span>
           </label>
 
@@ -1946,12 +2026,12 @@ function EmailTab() {
 
       <FalconCard
         title="Lưu ý"
-        subtitle="Gmail API"
+        subtitle="Nhà cung cấp email"
         bodyClassName="p-4 text-sm text-slate-600 space-y-2"
       >
-        <p>• Gửi qua Gmail API; không dùng Gmail App Password.</p>
+        <p>• Email được gửi qua provider do deployment cấu hình: Gmail API hoặc SMTP.</p>
         <p>• <b>Gửi thử</b> chỉ gửi về email tài khoản admin đang đăng nhập.</p>
-        <p>• <b>Gửi toàn bộ user</b> / công bố cập nhật: mọi user có email trong DB.</p>
+        <p>• <b>Gửi người đã đồng ý nhận tin</b>: tài khoản bật thông báo khuyến mãi và địa chỉ đã đăng ký newsletter.</p>
         <p>
           • API:{" "}
           <code className="rounded bg-slate-100 px-1 text-xs">
@@ -1996,7 +2076,7 @@ function EmailTab() {
               {broadcast.body || "(Chưa có nội dung)"}
             </div>
             <p className="mt-3 text-xs text-slate-400">
-              Gửi tới: Tất cả user có email
+              Gửi tới: nhóm đã đồng ý nhận tin
             </p>
           </div>
         </div>
@@ -2102,7 +2182,7 @@ function AgentMetricsTab() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <Activity className="h-4 w-4 text-blue-500" />
-          <span>Metric lưu trên Neon · cập nhật tự động mỗi 10 giây</span>
+          <span>Metric lấy từ cơ sở dữ liệu · cập nhật tự động mỗi 10 giây</span>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -2222,7 +2302,7 @@ function AgentMetricsTab() {
             </table>
           </div>
           <div className="border-t border-slate-100 px-4 py-3 text-[10px] leading-relaxed text-slate-400">
-            “Calls”, “Success”, “Failures”, “Latency” và “Last activity” được tổng hợp từ bảng metric trên Neon. “Events” là số sự kiện nghiệp vụ đã lưu riêng. InterventionAgent được hiển thị độc lập vì không đăng ký trong Supervisor · cập nhật {formatAgentDate(metrics.generated_at)}.
+            “Calls”, “Success”, “Failures”, “Latency” và “Last activity” được tổng hợp từ bảng metric trong cơ sở dữ liệu. “Events” là số sự kiện nghiệp vụ đã lưu riêng. InterventionAgent được hiển thị độc lập vì không đăng ký trong Supervisor · cập nhật {formatAgentDate(metrics.generated_at)}.
           </div>
         </div>
       )}
@@ -2232,112 +2312,64 @@ function AgentMetricsTab() {
 
 // ===== SETTINGS TAB =====
 function SettingsTab() {
-  const [settings, setSettings] = useState({
-    autoBlock: true,
-    aiIntervention: true,
-    notifyAdmin: true,
-    riskThreshold: 0.7,
-    dailyLimit: 50000000,
+  const settingsQuery = useQuery({
+    queryKey: ["admin-runtime-settings"],
+    queryFn: async () => (await axiosInstance.get<AdminRuntimeSettings>("/v1/admin/settings")).data,
+    retry: false,
   });
+
+  if (settingsQuery.isLoading) {
+    return <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Đang đọc cấu hình runtime...</div>;
+  }
+  if (settingsQuery.isError || !settingsQuery.data) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
+        Không thể đọc cấu hình runtime. Hãy kiểm tra quyền admin và kết nối API.
+      </div>
+    );
+  }
+
+  const settings = settingsQuery.data;
+  const booleanRows = [
+    ["Guardian Risk Agent", settings.guardian_agent_enabled],
+    ["Guardian STT", settings.guardian_stt_enabled],
+    ["Giải thích giao dịch bằng LLM", settings.llm_explanation_enabled],
+    ["Task Navigation Agent", settings.task_navigator_agent_enabled],
+    ["RAG nội dung công khai", settings.rag_enabled],
+    ["Nạp sẵn model Face ID", settings.face_model_preload],
+  ] as const;
 
   return (
     <div className="space-y-4">
-      <FalconCard title="Cấu hình AI Anti-Scam" subtitle="Bật/tắt các cơ chế can thiệp tự động">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-slate-800">Tự động chặn giao dịch</p>
-              <p className="text-xs text-slate-400">Chặn ngay khi phát hiện rủi ro cao</p>
+      <FalconCard title="Cấu hình AI Anti-Scam" subtitle="Giá trị thực đang được backend sử dụng">
+        <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
+          Màn hình này chỉ đọc để tránh tạo cảm giác đã lưu khi cấu hình chưa thay đổi. Muốn cập nhật, hãy sửa biến môi trường triển khai rồi khởi động lại dịch vụ.
+        </div>
+        <div className="divide-y divide-slate-100">
+          {booleanRows.map(([label, enabled]) => (
+            <div key={label} className="flex items-center justify-between py-3">
+              <span className="font-medium text-slate-700">{label}</span>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                {enabled ? "Đang bật" : "Đang tắt"}
+              </span>
             </div>
-            <button
-              onClick={() => setSettings({ ...settings, autoBlock: !settings.autoBlock })}
-              className={`w-12 h-7 rounded-full transition-colors relative ${
-                settings.autoBlock ? "bg-blue-600" : "bg-gray-300"
-              }`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-transform ${
-                settings.autoBlock ? "translate-x-6" : "translate-x-1"
-              }`} />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-slate-800">Can thiệp AI thông minh</p>
-              <p className="text-xs text-slate-400">Hiển thị cảnh báo chi tiết cho người dùng</p>
-            </div>
-            <button
-              onClick={() => setSettings({ ...settings, aiIntervention: !settings.aiIntervention })}
-              className={`w-12 h-7 rounded-full transition-colors relative ${
-                settings.aiIntervention ? "bg-blue-600" : "bg-gray-300"
-              }`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-transform ${
-                settings.aiIntervention ? "translate-x-6" : "translate-x-1"
-              }`} />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-slate-800">Thông báo admin</p>
-              <p className="text-xs text-slate-400">Gửi alert khi có giao dịch bị chặn</p>
-            </div>
-            <button
-              onClick={() => setSettings({ ...settings, notifyAdmin: !settings.notifyAdmin })}
-              className={`w-12 h-7 rounded-full transition-colors relative ${
-                settings.notifyAdmin ? "bg-blue-600" : "bg-gray-300"
-              }`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-transform ${
-                settings.notifyAdmin ? "translate-x-6" : "translate-x-1"
-              }`} />
-            </button>
-          </div>
+          ))}
         </div>
       </FalconCard>
 
-      <FalconCard title="Ngưỡng rủi ro" subtitle="Điều chỉnh giới hạn cảnh báo và giao dịch">
-        <div className="space-y-4">
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-600">Ngưỡng cảnh báo</span>
-              <span className="font-bold text-blue-600">{(settings.riskThreshold * 100).toFixed(0)}%</span>
+      <FalconCard title="Môi trường triển khai" subtitle="Thông tin runtime không chứa bí mật">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            ["Môi trường", settings.app_env],
+            ["Phiên bản luật rủi ro", settings.risk_rules_version],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+              <p className="mt-2 font-bold text-slate-800">{value}</p>
             </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={settings.riskThreshold}
-              onChange={(e) => setSettings({ ...settings, riskThreshold: parseFloat(e.target.value) })}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-            />
-            <div className="flex justify-between text-xs text-gray-400 mt-1">
-              <span>0%</span>
-              <span>50%</span>
-              <span>100%</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-600">Giới hạn giao dịch/ngày</span>
-              <span className="font-bold text-blue-600">{new Intl.NumberFormat("vi-VN").format(settings.dailyLimit)} đ</span>
-            </div>
-            <input
-              type="range"
-              min="1000000"
-              max="500000000"
-              step="1000000"
-              value={settings.dailyLimit}
-              onChange={(e) => setSettings({ ...settings, dailyLimit: parseInt(e.target.value) })}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-            />
-          </div>
+          ))}
         </div>
       </FalconCard>
-
     </div>
   );
 }

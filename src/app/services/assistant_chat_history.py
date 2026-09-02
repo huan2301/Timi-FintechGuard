@@ -23,9 +23,7 @@ def _utcnow() -> datetime:
 def normalize_question(message: str) -> str:
     """Normalise only for exact-repeat lookup; retain the original message too."""
     decomposed = unicodedata.normalize("NFD", message.strip().lower())
-    without_accents = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    )
+    without_accents = "".join(character for character in decomposed if not unicodedata.combining(character))
     return re.sub(r"\s+", " ", without_accents)
 
 

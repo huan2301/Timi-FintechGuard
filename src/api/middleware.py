@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -26,9 +25,7 @@ from src.services.db import AsyncSessionLocal
 logger = logging.getLogger(__name__)
 
 # Chỉ audit các path nhạy cảm
-AUDITED_PATHS_PREFIXES = (
-    "/api/v1/transactions",
-)
+AUDITED_PATHS_PREFIXES = ("/api/v1/transactions",)
 
 
 class AuditMiddleware(BaseHTTPMiddleware):
@@ -36,10 +33,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         # Kiểm tra trước — bỏ qua nếu không phải path cần audit
-        should_audit = any(
-            request.url.path.startswith(prefix)
-            for prefix in AUDITED_PATHS_PREFIXES
-        )
+        should_audit = any(request.url.path.startswith(prefix) for prefix in AUDITED_PATHS_PREFIXES)
 
         response = await call_next(request)
 

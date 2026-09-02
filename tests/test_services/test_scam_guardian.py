@@ -1,4 +1,5 @@
 from src.app.services.scam_guardian import (
+    MAX_ROLLING_GUARDIAN_SEGMENTS,
     GuardianConversationState,
     analyze_guardian_state,
 )
@@ -13,6 +14,16 @@ def test_isolated_bank_word_is_not_a_scam_signal() -> None:
     assert result.risk_score == 0
     assert result.risk_level == "safe"
     assert result.scenario is None
+
+
+def test_conversation_state_keeps_only_a_short_recent_context_window() -> None:
+    state = GuardianConversationState()
+    for index in range(MAX_ROLLING_GUARDIAN_SEGMENTS + 4):
+        state.append("unknown", f"đoạn {index}")
+
+    assert len(state.segments) == MAX_ROLLING_GUARDIAN_SEGMENTS
+    assert state.segments[0][1] == "đoạn 4"
+    assert state.segments[-1][1] == f"đoạn {MAX_ROLLING_GUARDIAN_SEGMENTS + 3}"
 
 
 def test_authority_threat_secrecy_and_safe_account_reaches_critical() -> None:

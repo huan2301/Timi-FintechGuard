@@ -29,9 +29,7 @@ class Blacklist(Base, TimestampMixin):
         Index("ix_blacklist_created_at_id", "created_at", "id"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     entity_type: Mapped[str] = mapped_column(String(20), nullable=False)
     entity_value: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     bank: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -40,6 +38,4 @@ class Blacklist(Base, TimestampMixin):
     evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    matched_signals: Mapped[list["RiskSignal"]] = relationship(
-        back_populates="matched_blacklist"
-    )
+    matched_signals: Mapped[list["RiskSignal"]] = relationship(back_populates="matched_blacklist")

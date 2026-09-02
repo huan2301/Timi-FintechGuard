@@ -60,7 +60,7 @@ def _looks_like_silence_hallucination(result: object) -> bool:
             (avg_logprob, "avg_logprob"),
         ):
             value = _field(item, name)
-            if isinstance(value, (int, float)):
+            if isinstance(value, int | float):
                 target.append(float(value))
 
     # A segment marked as almost certainly non-speech should never become a
@@ -77,9 +77,11 @@ def _looks_like_silence_hallucination(result: object) -> bool:
 
 def _normalise_transcript(text: str) -> str:
     decomposed = unicodedata.normalize("NFKD", text.casefold())
-    without_accents = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    ).replace("đ", "d").replace("Đ", "d")
+    without_accents = (
+        "".join(character for character in decomposed if not unicodedata.combining(character))
+        .replace("đ", "d")
+        .replace("Đ", "d")
+    )
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", without_accents)).strip()
 
 
@@ -110,11 +112,7 @@ def is_probable_ad_hallucination(text: str) -> bool:
     if any(marker in normalized for marker in direct_markers):
         return True
     # Cover punctuation/word-order variants such as "like, share video".
-    return (
-        "like" in normalized
-        and "share" in normalized
-        and ("video" in normalized or "kenh" in normalized)
-    )
+    return "like" in normalized and "share" in normalized and ("video" in normalized or "kenh" in normalized)
 
 
 @lru_cache(maxsize=8)

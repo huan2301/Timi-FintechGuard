@@ -38,10 +38,9 @@ def legacy_status() -> dict[str, str]:
 
 
 @router.post("/transactions/analyze", status_code=status.HTTP_200_OK)
-def legacy_analyze(payload: LegacyAnalyzeRequest) -> dict[str, str | float]:
-    """Validate the old analysis payload without executing a transfer."""
+def legacy_analyze(_payload: LegacyAnalyzeRequest) -> dict[str, str]:
+    """Give old clients a truthful migration response without echoing PII."""
     return {
-        "status": "accepted",
-        "receiver": payload.receiver,
-        "amount": payload.amount,
+        "status": "deprecated",
+        "message": "Endpoint này không phân tích rủi ro; hãy dùng POST /api/v1/transactions/assess.",
     }

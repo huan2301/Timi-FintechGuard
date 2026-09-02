@@ -7,9 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 RiskLevel = Literal["safe", "low", "medium", "high"]
 SignalSeverity = Literal["info", "low", "medium", "high"]
 WarningDecision = Literal["proceeded", "cancelled"]
-InterventionAction = Literal[
-    "start", "verify", "continue", "trust_recipient", "cancel", "proceed"
-]
+InterventionAction = Literal["start", "verify", "continue", "trust_recipient", "cancel", "proceed"]
 
 
 class RiskClientContextIn(BaseModel):
@@ -123,6 +121,8 @@ class TransactionHistoryPage(BaseModel):
 
 class TransactionHistorySummary(BaseModel):
     completed_outgoing_today: int = Field(..., ge=0)
+    daily_limit: int = Field(..., gt=0)
+    remaining_daily_limit: int = Field(..., ge=0)
     total_transactions: int = Field(..., ge=0)
 
 
@@ -152,9 +152,7 @@ class SavedRecipientOut(BaseModel):
 
 
 class WarningFeedbackCreate(BaseModel):
-    feedback_type: Literal[
-        "helpful", "false_positive", "confirmed_scam", "not_helpful", "unsure"
-    ]
+    feedback_type: Literal["helpful", "false_positive", "confirmed_scam", "not_helpful", "unsure"]
     comment: str | None = Field(default=None, max_length=2000)
 
 

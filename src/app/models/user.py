@@ -1,8 +1,9 @@
-import enum
 import uuid
+from datetime import datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Index, String, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from src.app.models.trusted_recipient import TrustedRecipient
 
 
-class UserRole(str, enum.Enum):
+class UserRole(StrEnum):
     USER = "user"
     ADMIN = "admin"
 
@@ -40,9 +41,7 @@ class User(Base, TimestampMixin):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     # Google's immutable `sub` claim is the OAuth account identifier. Never use
     # the email address as the federated identity key because it can change.
@@ -52,28 +51,35 @@ class User(Base, TimestampMixin):
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     transaction_pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    auth_token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Keyed pseudonym of the last browser that completed both device OTP (when
+    # required) and location confirmation. The original browser ID is never stored.
+    last_login_device_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trusted_device_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_location_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    login_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_pin_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    pin_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     role: Mapped[str] = mapped_column(String(20), default=UserRole.USER.value, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     balance: Mapped[int] = mapped_column(BigInteger, default=50_000_000, nullable=False)
-    timi_bank_enabled: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="false", nullable=False
-    )
+    timi_bank_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
     @property
     def is_google_account(self) -> bool:
         """Whether this account is backed by Google OAuth."""
         return bool(self.google_subject)
 
-    transactions: Mapped[list["Transaction"]] = relationship(
-        back_populates="user", foreign_keys="Transaction.user_id"
-    )
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="user", foreign_keys="Transaction.user_id")
     timi_received_transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="timi_recipient",
         foreign_keys="Transaction.timi_recipient_user_id",
     )
-    timi_ledger_entries: Mapped[list["TimiLedgerEntry"]] = relationship(
-        back_populates="user"
-    )
+    timi_ledger_entries: Mapped[list["TimiLedgerEntry"]] = relationship(back_populates="user")
     trusted_recipients: Mapped[list["TrustedRecipient"]] = relationship(back_populates="user")
     saved_recipients: Mapped[list["SavedRecipient"]] = relationship(back_populates="user")
     consents: Mapped[list["UserConsent"]] = relationship(back_populates="user")

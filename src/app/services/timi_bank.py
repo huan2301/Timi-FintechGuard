@@ -19,11 +19,11 @@ class TimiTransferError(Exception):
     """A domain error that must stop an internal money movement."""
 
 
-class TimiRecipientUnavailable(TimiTransferError):
+class TimiRecipientUnavailable(TimiTransferError):  # noqa: N818 - public domain exception name
     pass
 
 
-class TimiSelfTransfer(TimiTransferError):
+class TimiSelfTransfer(TimiTransferError):  # noqa: N818 - public domain exception name
     pass
 
 
@@ -31,7 +31,7 @@ class TimiAdminRecipientError(TimiTransferError):
     pass
 
 
-class InsufficientTimiBalance(TimiTransferError):
+class InsufficientTimiBalance(TimiTransferError):  # noqa: N818 - public domain exception name
     pass
 
 

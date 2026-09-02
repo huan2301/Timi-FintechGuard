@@ -25,9 +25,7 @@ def health() -> dict[str, str]:
 def readiness(db: Session = Depends(get_db)) -> dict[str, str]:
     """Readiness: kiểm tra cả kết nối Postgres và extension pgvector."""
     db.execute(text("SELECT 1"))
-    has_vector = db.scalar(
-        text("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')")
-    )
+    has_vector = db.scalar(text("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')"))
     return {
         "status": "ready",
         "database": "connected",

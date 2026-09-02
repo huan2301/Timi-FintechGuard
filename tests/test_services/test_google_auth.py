@@ -22,6 +22,7 @@ def test_google_phone_completion_token_only_contains_verified_profile() -> None:
         email="person@example.com",
         full_name="Google Display Name",
         remember_me=True,
+        device_hash="a" * 64,
     )
 
     profile = decode_google_phone_completion_token(token)
@@ -30,6 +31,7 @@ def test_google_phone_completion_token_only_contains_verified_profile() -> None:
     assert profile["email"] == "person@example.com"
     assert profile["full_name"] == "Google Display Name"
     assert profile["remember_me"] is True
+    assert profile["device_hash"] == "a" * 64
     assert profile["purpose"] == "google_phone_completion"
 
 
@@ -99,7 +101,7 @@ async def test_google_login_requires_server_configuration(client, monkeypatch) -
         get_settings.cache_clear()
         response = await client.post(
             "/api/v1/auth/google",
-            json={"credential": "x" * 20},
+            json={"credential": "x" * 20, "device_id": "test-google-browser-device"},
         )
 
     get_settings.cache_clear()

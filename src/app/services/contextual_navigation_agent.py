@@ -96,9 +96,7 @@ không nhầm với "trang chủ" là /dashboard. Không được trả bất k�
 
 def _normalize(value: str) -> str:
     decomposed = unicodedata.normalize("NFD", value.lower())
-    without_accents = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    )
+    without_accents = "".join(character for character in decomposed if not unicodedata.combining(character))
     return without_accents.replace("đ", "d")
 
 
@@ -121,12 +119,7 @@ def understand_navigation_request(message: str) -> ContextualNavigationDecision 
 
     settings = get_settings()
     provider = task_navigator_provider_config(settings)
-    if (
-        not settings.task_navigator_agent_enabled
-        or not provider.api_key
-        or not provider.base_url
-        or not provider.model
-    ):
+    if not settings.task_navigator_agent_enabled or not provider.api_key or not provider.base_url or not provider.model:
         return None
 
     request: dict[str, object] = {
@@ -171,9 +164,7 @@ def _request_with_key_failover(
             ).chat.completions.create(**request)
         except Exception as exc:
             if is_rate_limit_error(exc) and index < len(api_keys) - 1:
-                logger.warning(
-                    "Contextual Navigation Agent is rate limited; trying a configured backup key"
-                )
+                logger.warning("Contextual Navigation Agent is rate limited; trying a configured backup key")
                 continue
             logger.info(
                 "Contextual Navigation Agent unavailable (%s)",

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from scripts.log_hook import normalize
 from scripts.log_manual import build_entry
@@ -14,7 +14,7 @@ def test_manual_log_uses_utc_timestamp(monkeypatch):
 
     assert entry["timestamp"].endswith("+00:00")
     assert entry["created_at"].endswith("+00:00")
-    assert datetime.fromisoformat(entry["timestamp"]).tzinfo == timezone.utc
+    assert datetime.fromisoformat(entry["timestamp"]).tzinfo == UTC
 
 
 def test_hook_log_uses_utc_timestamp(monkeypatch):
@@ -35,4 +35,4 @@ def test_hook_log_uses_utc_timestamp(monkeypatch):
 
     assert entry is not None
     assert entry["ts"].endswith("+00:00")
-    assert datetime.fromisoformat(entry["ts"]).tzinfo == timezone.utc
+    assert datetime.fromisoformat(entry["ts"]).tzinfo == UTC

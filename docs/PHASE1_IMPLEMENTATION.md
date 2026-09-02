@@ -157,7 +157,7 @@ python eval/scripts/run_phase1_eval.py --dataset eval/dataset/guardian_cases_v1.
 - Production DB-backed metrics
 - CI eval mỗi PR, load test, anti-spoof Face ID
 
-Tuần 6 chỉ **phác thảo** Manager (1 MD + prompt) nếu còn thời gian — xem `ROADMAP.md`.
+Tuần 6 chỉ **phác thảo** Manager (1 MD + prompt) nếu còn thời gian — xem mục roadmap trong `README.md`.
 
 ---
 
@@ -184,5 +184,5 @@ Tuần 6 chỉ **phác thảo** Manager (1 MD + prompt) nếu còn thời gian �
 | `eval/results/baseline_20260823_034947.json` | Raw run 100% |
 | `eval/golden/README.md` | Golden multi-suite |
 | `prompts/README.md` | Versioned prompts |
-| `ROADMAP.md` / `JOURNAL.md` | Lịch 6 tuần |
+| Root `README.md` | Roadmap phase và kết quả dự án |
 | Root `README.md` | Evaluation + env flags |

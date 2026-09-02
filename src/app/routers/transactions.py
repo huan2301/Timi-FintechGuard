@@ -1,22 +1,23 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Any
 from uuid import UUID
 
-from ..database import get_db
-from ..models import Transaction, User, AuditLog
-from ..schemas import (
-    TransactionCreate,
-    TransactionResponse,
-    TransactionDecision,
-    RiskAnalysis,
-    InterventionResponse,
-)
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy.orm import Session
+
 from ..core.security import get_current_user
-from ..services.risk_engine import RiskEngine
+from ..database import get_db
+from ..models import Transaction, User
+from ..schemas import (
+    InterventionResponse,
+    RiskAnalysis,
+    TransactionCreate,
+    TransactionDecision,
+    TransactionResponse,
+)
+from ..services.email_service import send_security_email, send_transaction_email
 from ..services.llm_agent import InterventionAgent
-from ..services.email_service import send_transaction_email, send_security_email
+from ..services.risk_engine import RiskEngine
 
 router = APIRouter(prefix="/api/v1/transactions", tags=["Transactions"])
 
@@ -88,10 +89,7 @@ async def analyze_transaction(
     )
 
     # Mail bảo mật khi rủi ro cao / critical
-    if (
-        risk_result.level in ("high", "critical")
-        and getattr(current_user, "email", None)
-    ):
+    if risk_result.level in ("high", "critical") and getattr(current_user, "email", None):
         background_tasks.add_task(
             send_security_email,
             to=current_user.email,
@@ -131,11 +129,7 @@ async def make_decision(
     Bước 2: Người dùng quyết định sau khi xem cảnh báo (HITL).
     Agent chỉ cảnh báo, KHÔNG tự động chặn.
     """
-    tx = (
-        db.query(Transaction)
-        .filter(Transaction.id == tx_id, Transaction.user_id == current_user.id)
-        .first()
-    )
+    tx = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
 
     if not tx:
         raise HTTPException(status_code=404, detail="Giao dịch không tồn tại")
@@ -188,10 +182,7 @@ async def make_decision(
                 to=user_email,
                 full_name=full_name,
                 title="Bạn đã hủy giao dịch để an toàn",
-                message=(
-                    f"Giao dịch {tx.id} tới {payee} "
-                    f"({amount:,} đ) đã được hủy theo lựa chọn của bạn."
-                ),
+                message=(f"Giao dịch {tx.id} tới {payee} ({amount:,} đ) đã được hủy theo lựa chọn của bạn."),
             )
 
     return TransactionResponse.model_validate(tx)
@@ -200,7 +191,7 @@ async def make_decision(
 @router.post("/{tx_id}/intervene", response_model=InterventionResponse)
 async def intervention_step(
     tx_id: UUID,
-    user_response: Optional[str] = None,
+    user_response: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -208,11 +199,7 @@ async def intervention_step(
     Bước 3: Luồng can thiệp đa bước (LangGraph) nếu rủi ro cao.
     HITL: Dừng lại chờ người dùng phản hồi từng bước.
     """
-    tx = (
-        db.query(Transaction)
-        .filter(Transaction.id == tx_id, Transaction.user_id == current_user.id)
-        .first()
-    )
+    tx = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
 
     if not tx:
         raise HTTPException(status_code=404, detail="Giao dịch không tồn tại")

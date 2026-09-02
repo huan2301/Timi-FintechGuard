@@ -61,9 +61,7 @@ class Transaction(Base, TimestampMixin):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
@@ -81,27 +79,23 @@ class Transaction(Base, TimestampMixin):
     transaction_status: Mapped[str] = mapped_column(
         String(30), default=TransactionStatus.DRAFT, nullable=False, index=True
     )
-    environment: Mapped[str] = mapped_column(
-        String(20), default=TransactionEnvironment.SANDBOX, nullable=False
-    )
+    environment: Mapped[str] = mapped_column(String(20), default=TransactionEnvironment.SANDBOX, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="VND", nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    user: Mapped["User"] = relationship(
-        back_populates="transactions", foreign_keys=[user_id]
-    )
-    timi_recipient: Mapped["User | None"] = relationship(
+    user: Mapped[User] = relationship(back_populates="transactions", foreign_keys=[user_id])
+    timi_recipient: Mapped[User | None] = relationship(
         back_populates="timi_received_transactions",
         foreign_keys=[timi_recipient_user_id],
     )
-    timi_ledger_entries: Mapped[list["TimiLedgerEntry"]] = relationship(
+    timi_ledger_entries: Mapped[list[TimiLedgerEntry]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan"
     )
-    assessments: Mapped[list["TransactionRiskAssessment"]] = relationship(
+    assessments: Mapped[list[TransactionRiskAssessment]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan"
     )
-    warnings: Mapped[list["TransactionWarning"]] = relationship(
+    warnings: Mapped[list[TransactionWarning]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan"
     )
 

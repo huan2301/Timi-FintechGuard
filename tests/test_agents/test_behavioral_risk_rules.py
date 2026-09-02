@@ -57,19 +57,19 @@ def test_behavioral_amount_anomaly_compares_completed_history():
     assert signal.signal_type == "behavioral_amount_anomaly"
     assert signal.severity == "high"
     assert signal.evidence["median_amount_vnd"] == 500_000
-    score, level = score_from_signals([
-        signal,
-        SimpleNamespace(signal_type="new_payee", score=0.20, severity="low"),
-    ])
+    score, level = score_from_signals(
+        [
+            signal,
+            SimpleNamespace(signal_type="new_payee", score=0.20, severity="low"),
+        ]
+    )
     assert score == 0.65
     assert level == "high"
 
 
 def test_velocity_signal_requires_many_distinct_completed_recipients():
     previous = [(f"09{i:08d}", "TIMI") for i in range(2, 11)]
-    signal = _transaction_velocity_signal(
-        _FakeDb(execute_values=previous), uuid4(), _request(amount=500_000)
-    )
+    signal = _transaction_velocity_signal(_FakeDb(execute_values=previous), uuid4(), _request(amount=500_000))
     assert signal is not None
     assert signal.signal_type == "transaction_velocity"
     score, level = score_from_signals([signal])
@@ -78,9 +78,7 @@ def test_velocity_signal_requires_many_distinct_completed_recipients():
 
 
 def test_requested_scam_keywords_are_accent_insensitive_and_explained():
-    signals = _note_signals(
-        "Cong an bao tai khoan vi pham, hay gui ma OTP de hoan tien qua buu dien"
-    )
+    signals = _note_signals("Cong an bao tai khoan vi pham, hay gui ma OTP de hoan tien qua buu dien")
     keyword_signal = next(signal for signal in signals if signal.signal_type == "scam_keyword")
     assert keyword_signal.evidence["matched_categories"] == [
         "bưu điện",
@@ -133,9 +131,7 @@ def test_impossible_travel_is_detected_from_opted_in_coarse_locations():
 
 def test_telemetry_is_pseudonymized_and_location_requires_a_pair():
     raw_device = "d4d33a67-7cfe-4bb8-bae5-7cc2ec3e2abf"
-    telemetry = build_risk_telemetry(
-        RiskClientContextIn(device_id=raw_device), client_ip="203.0.113.10"
-    )
+    telemetry = build_risk_telemetry(RiskClientContextIn(device_id=raw_device), client_ip="203.0.113.10")
     assert telemetry.device_hash != raw_device
     assert telemetry.ip_hash != "203.0.113.10"
     with pytest.raises(ValidationError):

@@ -50,11 +50,6 @@ export default function PublicSiteChrome({ children }: PublicSiteChromeProps) {
 
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-white font-[Inter] text-[#0B0B0B]">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap');
-        .font-display { font-family: 'Space Grotesk', sans-serif; }
-      `}</style>
-
       <nav className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white">
         <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-20">
           <div className="flex h-16 items-center justify-between">
@@ -266,7 +261,7 @@ export default function PublicSiteChrome({ children }: PublicSiteChromeProps) {
                 </span>
               </Link>
               <p className="max-w-sm text-xs leading-5 sm:text-sm sm:leading-relaxed">
-                Ví điện tử thông minh được bảo vệ bởi AI. Sứ mệnh của chúng tôi là giúp mọi giao dịch của bạn đều an toàn tuyệt đối.
+                Ví điện tử thử nghiệm có lớp phân tích rủi ro AI, giúp bạn kiểm tra dấu hiệu bất thường trước khi quyết định.
               </p>
             </div>
             <div className="min-w-0">

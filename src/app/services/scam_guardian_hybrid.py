@@ -92,8 +92,7 @@ def merge_rule_and_agent(
                 scenario=rule.scenario or "agent_unavailable",
                 recommended_action="PAUSE",
                 explanation=(
-                    "Agent không phản hồi; rule engine phát hiện rủi ro — tạm PAUSE. "
-                    f"({agent_error or 'unavailable'})"
+                    f"Agent không phản hồi; rule engine phát hiện rủi ro — tạm PAUSE. ({agent_error or 'unavailable'})"
                 )[:1000],
                 signals=rule.signals,
             )
@@ -161,9 +160,7 @@ def merge_rule_and_agent(
 
     explanation = agent.explanation
     if final_action != agent_action:
-        explanation = (
-            f"{agent.explanation} [hybrid: {reason}; rule={rule_action}/{rule_score}]"
-        )[:1000]
+        explanation = (f"{agent.explanation} [hybrid: {reason}; rule={rule_action}/{rule_score}]")[:1000]
 
     final = GuardianRiskResult(
         risk_score=min(100, score),
@@ -196,9 +193,7 @@ def analyze_hybrid(
     agent_error: str | None = None
 
     try:
-        agent, agent_conf = analyze_with_guardian_agent(
-            state, latest_text, return_confidence=True
-        )
+        agent, agent_conf = analyze_with_guardian_agent(state, latest_text, return_confidence=True)
     except TypeError:
         # Backward compatible if agent not yet patched for return_confidence
         try:
@@ -211,6 +206,4 @@ def analyze_hybrid(
         agent_error = str(exc)
         logger.warning("Hybrid: agent unavailable: %s", agent_error)
 
-    return merge_rule_and_agent(
-        rule, agent, agent_confidence=agent_conf, agent_error=agent_error
-    )
+    return merge_rule_and_agent(rule, agent, agent_confidence=agent_conf, agent_error=agent_error)

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 # Import after path setup in real repo:
 # from src.app.services.scam_guardian_agent import (
 #     _normalize_decision_payload,
@@ -29,9 +27,7 @@ def test_normalize_aliases_score_action_level():
         "action": "block",
         "level": "severe",
         "reason": "OTP phishing",
-        "detected_signals": [
-            {"type": "otp_request", "score": 30, "probability": 0.9, "match": "đọc OTP"}
-        ],
+        "detected_signals": [{"type": "otp_request", "score": 30, "probability": 0.9, "match": "đọc OTP"}],
     }
     out = _normalize_decision_payload(raw)
     assert out["risk_score"] == 90
@@ -136,9 +132,7 @@ def test_hybrid_merge_low_confidence_floors_pause():
         scenario=None,
         recommended_action="PAUSE",
         explanation="rule",
-        signals=(
-            GuardianSignal("account_lock_threat", 24, 1.0, "khóa"),
-        ),
+        signals=(GuardianSignal("account_lock_threat", 24, 1.0, "khóa"),),
     )
     agent = GuardianRiskResult(
         risk_score=20,

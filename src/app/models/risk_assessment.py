@@ -40,9 +40,7 @@ class TransactionRiskAssessment(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     transaction_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), index=True
     )
@@ -57,11 +55,9 @@ class TransactionRiskAssessment(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)
 
-    transaction: Mapped["Transaction"] = relationship(back_populates="assessments")
-    signals: Mapped[list["RiskSignal"]] = relationship(
-        back_populates="assessment", cascade="all, delete-orphan"
-    )
-    warnings: Mapped[list["TransactionWarning"]] = relationship(back_populates="assessment")
+    transaction: Mapped[Transaction] = relationship(back_populates="assessments")
+    signals: Mapped[list[RiskSignal]] = relationship(back_populates="assessment", cascade="all, delete-orphan")
+    warnings: Mapped[list[TransactionWarning]] = relationship(back_populates="assessment")
 
 
 class RiskSignal(Base):
@@ -73,9 +69,7 @@ class RiskSignal(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     assessment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("transaction_risk_assessments.id", ondelete="CASCADE"),
@@ -94,17 +88,15 @@ class RiskSignal(Base):
     evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)
 
-    assessment: Mapped["TransactionRiskAssessment"] = relationship(back_populates="signals")
-    matched_blacklist: Mapped["Blacklist | None"] = relationship(back_populates="matched_signals")
-    matched_pattern: Mapped["ScamPattern | None"] = relationship(back_populates="matched_signals")
+    assessment: Mapped[TransactionRiskAssessment] = relationship(back_populates="signals")
+    matched_blacklist: Mapped[Blacklist | None] = relationship(back_populates="matched_signals")
+    matched_pattern: Mapped[ScamPattern | None] = relationship(back_populates="matched_signals")
 
 
 class TransactionWarning(Base, TimestampMixin):
     __tablename__ = "transaction_warnings"
     __table_args__ = (
-        CheckConstraint(
-            "warning_level IN ('medium', 'high')", name="ck_transaction_warnings_level"
-        ),
+        CheckConstraint("warning_level IN ('medium', 'high')", name="ck_transaction_warnings_level"),
         CheckConstraint(
             "countdown_seconds BETWEEN 0 AND 60",
             name="ck_transaction_warnings_countdown",
@@ -115,9 +107,7 @@ class TransactionWarning(Base, TimestampMixin):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     transaction_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), index=True
     )
@@ -135,12 +125,12 @@ class TransactionWarning(Base, TimestampMixin):
     verification_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
-    transaction: Mapped["Transaction"] = relationship(back_populates="warnings")
-    assessment: Mapped["TransactionRiskAssessment"] = relationship(back_populates="warnings")
-    feedback: Mapped["WarningFeedback | None"] = relationship(
+    transaction: Mapped[Transaction] = relationship(back_populates="warnings")
+    assessment: Mapped[TransactionRiskAssessment] = relationship(back_populates="warnings")
+    feedback: Mapped[WarningFeedback | None] = relationship(
         back_populates="warning", uselist=False, cascade="all, delete-orphan"
     )
-    intervention_logs: Mapped[list["InterventionLog"]] = relationship(back_populates="warning")
+    intervention_logs: Mapped[list[InterventionLog]] = relationship(back_populates="warning")
 
 
 class WarningFeedback(Base):
@@ -156,9 +146,7 @@ class WarningFeedback(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     warning_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("transaction_warnings.id", ondelete="CASCADE"),
@@ -177,7 +165,5 @@ class WarningFeedback(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default="now()", nullable=False)
 
-    warning: Mapped["TransactionWarning"] = relationship(back_populates="feedback")
-    user: Mapped["User"] = relationship(
-        back_populates="warning_feedback", foreign_keys=[user_id]
-    )
+    warning: Mapped[TransactionWarning] = relationship(back_populates="feedback")
+    user: Mapped[User] = relationship(back_populates="warning_feedback", foreign_keys=[user_id])

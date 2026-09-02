@@ -157,11 +157,10 @@ Docker: dùng `frontend/Dockerfile` trong compose production (Nginx serve static
 
 ## Liên kết
 
-- Root repo: `README.md` (tổng quan, env backend, Evaluation)
-- Backend setup: `SETUP.md`
-- Kiến trúc: `ARCHITECTURE.md`
-- Eval / Guardian metrics: `eval/results/report.md`
-- Roadmap 6 tuần: `ROADMAP.md` / `JOURNAL.md`
+- Root repo: [`README.md`](../README.md) (tổng quan, kiến trúc, roadmap và Evaluation)
+- Backend/deploy setup: [`docs/SETUP.md`](../docs/SETUP.md)
+- Luồng hoạt động và kiến trúc: [`ARCHITECTURE.md`](../ARCHITECTURE.md)
+- Eval / Guardian metrics: [`eval/results/report.md`](../eval/results/report.md)
 
 ---
 

@@ -69,6 +69,7 @@ def _download_model(url: str, filename: str) -> str:
         raise HTTPException(status_code=503, detail="Chưa tải được model face OpenCV. Hãy thử lại sau.") from exc
     return path
 
+
 def _image_bytes(data_url: str) -> bytes:
     try:
         encoded = data_url.split(",", 1)[1] if "," in data_url else data_url
@@ -85,10 +86,15 @@ def _model():
     try:
         import cv2
     except ImportError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Face AI chưa được cài đặt. Chạy pip install -r requirements.txt.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Face AI chưa được cài đặt. Chạy pip install -r requirements.txt.",
+        ) from exc
     try:
         recognizer = cv2.FaceRecognizerSF.create(_download_model(_SFACE_URL, "face_recognition_sface_2021dec.onnx"), "")
-        detector = cv2.FaceDetectorYN.create(_download_model(_YUNET_URL, "face_detection_yunet_2023mar.onnx"), "", (320, 320), 0.65, 0.3, 5000)
+        detector = cv2.FaceDetectorYN.create(
+            _download_model(_YUNET_URL, "face_detection_yunet_2023mar.onnx"), "", (320, 320), 0.65, 0.3, 5000
+        )
     except Exception as exc:
         if isinstance(exc, HTTPException):
             raise
@@ -118,7 +124,7 @@ def _embedding(raw: bytes):
     with _MODEL_INFERENCE_LOCK:
         aligned = recognizer.alignCrop(frame, face)
         feature = recognizer.feature(aligned)
-    return feature / max(float((feature ** 2).sum() ** 0.5), 1e-8)
+    return feature / max(float((feature**2).sum() ** 0.5), 1e-8)
 
 
 @lru_cache(maxsize=1)
@@ -131,9 +137,7 @@ def _face_detector():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Face detector chưa được cài đặt. Chạy pip install -r requirements.txt.",
         ) from exc
-    detector = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    )
+    detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     if detector.empty():
         raise HTTPException(status_code=503, detail="Không thể khởi tạo bộ nhận diện khuôn mặt")
     return cv2, detector
@@ -207,7 +211,12 @@ def _crop_primary_face(image):
         else:
             detail = "Khuôn mặt đang quá thấp. Hãy nâng camera hoặc đưa mặt lên một chút."
         raise HTTPException(status_code=422, detail=detail)
-    if x < image_width * 0.01 or y < image_height * 0.01 or x + width > image_width * 0.99 or y + height > image_height * 0.99:
+    if (
+        x < image_width * 0.01
+        or y < image_height * 0.01
+        or x + width > image_width * 0.99
+        or y + height > image_height * 0.99
+    ):
         if x < image_width * 0.01:
             detail = "Phần mặt bên trái đang sát mép hoặc ra khỏi khung. Hãy dịch mặt sang phải."
         elif x + width > image_width * 0.99:
@@ -310,9 +319,7 @@ def face_quality_rule_from_data_url(data_url: str) -> str:
         # downloading. Final enrollment/verification still requires SFace.
         cv2_module, haar_detector = _face_detector()
         gray = cv2_module.cvtColor(rgb, cv2_module.COLOR_RGB2GRAY)
-        faces = haar_detector.detectMultiScale(
-            gray, scaleFactor=1.08, minNeighbors=4, minSize=(20, 20)
-        )
+        faces = haar_detector.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=4, minSize=(20, 20))
     if len(faces) == 0:
         return "no_face"
     ordered = sorted(faces, key=lambda face: int(face[2]) * int(face[3]), reverse=True)
@@ -333,7 +340,12 @@ def face_quality_rule_from_data_url(data_url: str) -> str:
         if center_y < 0.24:
             return "off_center_top"
         return "off_center_bottom"
-    if x < image_width * 0.01 or y < image_height * 0.01 or x + width > image_width * 0.99 or y + height > image_height * 0.99:
+    if (
+        x < image_width * 0.01
+        or y < image_height * 0.01
+        or x + width > image_width * 0.99
+        or y + height > image_height * 0.99
+    ):
         if x < image_width * 0.01:
             return "off_center_left"
         if x + width > image_width * 0.99:
@@ -487,13 +499,9 @@ def validate_multiframe_liveness(image_data_urls: list[str]) -> dict:
 
     if not result["is_live"]:
         frame_results = result.get("indicators", {}).get("frame_results", [])
-        live_scores = [
-            round(float(frame.get("indicators", {}).get("live_score", 0.0)), 4)
-            for frame in frame_results
-        ]
+        live_scores = [round(float(frame.get("indicators", {}).get("live_score", 0.0)), 4) for frame in frame_results]
         strongest_spoof_scores = [
-            round(float(frame.get("indicators", {}).get("strongest_spoof_score", 0.0)), 4)
-            for frame in frame_results
+            round(float(frame.get("indicators", {}).get("strongest_spoof_score", 0.0)), 4) for frame in frame_results
         ]
         _LOGGER.warning(
             "Passive liveness rejected capture: duplicate=%s frames=%s live=%s spoof=%s",
@@ -511,6 +519,7 @@ def validate_multiframe_liveness(image_data_urls: list[str]) -> dict:
 
 def similarity_from_embedding(*, enrollment_embedding: list[float], selfie_data_url: str) -> float:
     import numpy as np
+
     reference = np.asarray(enrollment_embedding, dtype=np.float32)
     reference = reference / max(float(np.linalg.norm(reference)), 1e-8)
     selfie = _embedding(_image_bytes(selfie_data_url))
@@ -523,9 +532,7 @@ def similarity_from_embeddings(*, enrollment_embedding: list[float], selfie_data
 
     reference = np.asarray(enrollment_embedding, dtype=np.float32)
     reference = reference / max(float(np.linalg.norm(reference)), 1e-8)
-    candidate = aggregate_embeddings(
-        [embedding_from_data_url(data_url) for data_url in selfie_data_urls]
-    )
+    candidate = aggregate_embeddings([embedding_from_data_url(data_url) for data_url in selfie_data_urls])
     return float((reference * candidate).sum())
 
 

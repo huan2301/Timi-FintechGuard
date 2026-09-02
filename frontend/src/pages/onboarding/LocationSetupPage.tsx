@@ -27,13 +27,16 @@ function safeReturnPath(value: unknown): string {
     : "/dashboard";
 }
 
-/** Required once per account/browser device until that device is confirmed. */
+/** Required when a browser is new or its 30-day trust window has expired. */
 export default function LocationSetupPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const completeLocationConfirmation = useAuthStore(
+    (state) => state.completeLocationConfirmation,
+  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const returnTo = safeReturnPath(
@@ -46,7 +49,8 @@ export default function LocationSetupPage() {
     setSaving(true);
     try {
       const clientContext = await collectLoginRiskContext();
-      await authApi.recordLoginLocation({ client_context: clientContext });
+      const response = await authApi.recordLoginLocation({ client_context: clientContext });
+      completeLocationConfirmation(response);
       if (user?.id) markLoginLocationConfirmed(user.id);
       navigate(returnTo, { replace: true });
     } catch (requestError: unknown) {
@@ -120,7 +124,7 @@ export default function LocationSetupPage() {
               </p>
               <p className="mt-1 text-xs leading-relaxed text-violet-700">
                 Hệ thống chỉ lưu vị trí đã làm tròn; IP và mã thiết bị được băm
-                HMAC, không lưu dạng gốc.
+                HMAC, không lưu dạng gốc. Thiết bị này sẽ được tin cậy trong 30 ngày.
               </p>
             </div>
           </div>
@@ -139,10 +143,10 @@ export default function LocationSetupPage() {
             <div className="rounded-xl bg-slate-50 border border-slate-100 p-3.5">
               <Lock className="h-4 w-4 text-violet-500 mb-1.5" />
               <p className="text-xs font-semibold text-slate-800">
-                Một lần duy nhất
+                Tin cậy 30 ngày
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                Chỉ yêu cầu trên thiết bị mới
+                Chỉ xác minh lại khi hết hạn hoặc đổi thiết bị
               </p>
             </div>
           </div>
@@ -184,7 +188,7 @@ export default function LocationSetupPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-400">
-          © 2024 Timi. Bảo vệ tài khoản của bạn là ưu tiên hàng đầu.
+          © {new Date().getFullYear()} Timi. Bảo vệ tài khoản của bạn là ưu tiên hàng đầu.
         </p>
       </section>
     </div>

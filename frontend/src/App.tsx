@@ -38,9 +38,24 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
   const { token, fetchMe } = useAuthStore();
 
   useEffect(() => {
-    if (token) {
-      void fetchMe();
-    }
+    if (!token) return undefined;
+
+    const verifySession = () => void fetchMe();
+    const verifyVisibleSession = () => {
+      if (document.visibilityState === "visible") verifySession();
+    };
+    verifySession();
+    // Server-side token-version rotation invalidates the previous device
+    // immediately. Polling plus focus/visibility checks remove its stale local
+    // UI even when the user leaves that tab idle.
+    const intervalId = window.setInterval(verifyVisibleSession, 10_000);
+    window.addEventListener("focus", verifySession);
+    document.addEventListener("visibilitychange", verifyVisibleSession);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", verifySession);
+      document.removeEventListener("visibilitychange", verifyVisibleSession);
+    };
   }, [fetchMe, token]);
 
   return <>{children}</>;
@@ -121,6 +136,15 @@ function App() {
                 />
 
                 <Route
+                  path="/confirm-location"
+                  element={
+                    <ProtectedRoute>
+                      <LocationSetupPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
                   element={
                     <ProtectedRoute>
                       <LocationRequiredRoute>
@@ -129,7 +153,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/confirm-location" element={<LocationSetupPage />} />
                   <Route path="/setup-pin" element={<PinSetupPage />} />
                   <Route path="/setup-face" element={<FaceEnrollmentPage />} />
                   <Route path="/dashboard" element={<DashboardPage />} />

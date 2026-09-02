@@ -8,6 +8,7 @@ from src.app.models.blacklist import Blacklist
 from src.app.models.compliance import DataRetentionPolicy, UserConsent
 from src.app.models.content_chunk import ContentChunk
 from src.app.models.content_item import ContentItem
+from src.app.models.device_login_verification import DeviceLoginVerification
 from src.app.models.email_change_verification import EmailChangeVerification
 from src.app.models.face_enrollment import FaceEnrollment
 from src.app.models.face_verification_log import FaceVerificationLog
@@ -15,6 +16,9 @@ from src.app.models.face_verification_state import FaceVerificationState
 from src.app.models.intervention_log import InterventionLog
 from src.app.models.model_registry import IntelligenceSource, ModelVersion
 from src.app.models.newsletter_subscriber import NewsletterSubscriber
+from src.app.models.notification import Notification
+from src.app.models.notification_preference import NotificationPreference
+from src.app.models.password_reset_verification import PasswordResetVerification
 from src.app.models.recipient_directory import RecipientDirectory
 from src.app.models.registration_verification import RegistrationVerification
 from src.app.models.risk_assessment import (
@@ -51,6 +55,7 @@ __all__ = [
     "DataRetentionPolicy",
     "ContentItem",
     "ContentChunk",
+    "DeviceLoginVerification",
     "FaceEnrollment",
     "FaceVerificationLog",
     "FaceVerificationState",
@@ -58,6 +63,9 @@ __all__ = [
     "IntelligenceSource",
     "InterventionLog",
     "NewsletterSubscriber",
+    "Notification",
+    "NotificationPreference",
+    "PasswordResetVerification",
     "RegistrationVerification",
     "ModelVersion",
     "RiskLevel",

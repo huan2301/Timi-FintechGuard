@@ -1,44 +1,46 @@
+"""Send an explicit email-provider smoke test to operator-supplied recipients."""
+
+from __future__ import annotations
+
+import argparse
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
-import os
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-load_dotenv(ROOT / ".env")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.app.services.email_service import send_email, send_batch_emails
 
-print("EMAIL_ENABLED =", os.getenv("EMAIL_ENABLED"))
-print("EMAIL_USER =", os.getenv("EMAIL_USER"))
-print("HAS_PASSWORD =", bool(os.getenv("EMAIL_PASSWORD")))
-print("FROM =", os.getenv("EMAIL_FROM"))
-print("HOST =", os.getenv("EMAIL_HOST"), "PORT =", os.getenv("EMAIL_PORT"))
-
-RECIPIENTS = [
-    "kemii1704@gmail.com",
-    "ngovan.15121977@gmail.com",
-]
-
-for to in RECIPIENTS:
-    ok = send_email(
-        to=to,
-        subject="[Timi] Test SMTP",
-        html=f"<p>Test SMTP tới <b>{to}</b></p>",
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Send a Timi email smoke test using the configured provider.",
     )
-    print(f"single → {to}: {ok}")
+    parser.add_argument(
+        "--recipient",
+        action="append",
+        required=True,
+        help="Recipient address. Repeat the flag to test batch delivery.",
+    )
+    args = parser.parse_args()
 
-items = [
-    {
-        "to": "kemii1704@gmail.com",
-        "subject": "[Timi] Batch SMTP #1",
-        "html": "<p>Batch SMTP cho kemii1704</p>",
-    },
-    {
-        "to": "ngovan.15121977@gmail.com",
-        "subject": "[Timi] Batch SMTP #2",
-        "html": "<p>Batch SMTP cho ngovan</p>",
-    },
-]
-ok, fail = send_batch_emails(items=items)
-print(f"batch result: ok={ok} fail={fail}")
+    load_dotenv(PROJECT_ROOT / ".env")
+    from src.app.services.email_service import send_batch_emails
+
+    items = [
+        {
+            "to": recipient,
+            "subject": "[Timi] Kiểm tra nhà cung cấp email",
+            "html": "<p>Đây là email kiểm tra do quản trị viên chủ động gửi.</p>",
+            "text": "Đây là email kiểm tra do quản trị viên chủ động gửi.",
+        }
+        for recipient in args.recipient
+    ]
+    successful, failed = send_batch_emails(items=items)
+    print(f"Kết quả: thành công={successful}, thất bại={failed}")
+    return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -67,18 +67,11 @@ def task_navigator_provider_config(
     current = settings or get_settings()
     return AgentProviderConfig(
         api_keys=_key_pool(
-            _value(current, "task_navigator_agent_api_key")
-            or _value(current, "groq_api_key"),
+            _value(current, "task_navigator_agent_api_key") or _value(current, "groq_api_key"),
             _value(current, "task_navigator_agent_api_keys"),
         ),
-        base_url=(
-            _value(current, "task_navigator_agent_base_url")
-            or _value(current, "groq_base_url")
-        ),
-        model=(
-            _value(current, "task_navigator_agent_model")
-            or _value(current, "groq_model_name")
-        ),
+        base_url=(_value(current, "task_navigator_agent_base_url") or _value(current, "groq_base_url")),
+        model=(_value(current, "task_navigator_agent_model") or _value(current, "groq_model_name")),
     )
 
 

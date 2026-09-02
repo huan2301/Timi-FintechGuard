@@ -25,7 +25,10 @@ def test_chat_support_front_door_selects_bounded_domains_without_provider(monkey
     assert chat_intent.classify_chat_intent("Tôi muốn chuyển tiền cho Huân", state, []).intent == ChatIntent.TRANSFER
     assert chat_intent.classify_chat_intent("Mở trang chuyển tiền", state, []).intent == ChatIntent.NAVIGATION
     assert chat_intent.classify_chat_intent("QR có quét được khuôn mặt không?", state, []).intent == ChatIntent.QUESTION
-    assert chat_intent.classify_chat_intent("Tôi muốn tắt bảo vệ cuộc gọi", state, []).intent == ChatIntent.GUARDIAN_PREFERENCE
+    assert (
+        chat_intent.classify_chat_intent("Tôi muốn tắt bảo vệ cuộc gọi", state, []).intent
+        == ChatIntent.GUARDIAN_PREFERENCE
+    )
     assert chat_intent.classify_chat_intent("hi", state, []).intent == ChatIntent.QUESTION
     assert chat_intent.classify_chat_intent("không có câu nào", state, []).intent == ChatIntent.QUESTION
     assert chat_intent.classify_chat_intent("Thời tiết hôm nay", state, []).intent == ChatIntent.OUT_OF_SCOPE

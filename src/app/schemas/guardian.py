@@ -48,6 +48,8 @@ class GuardianAudioMessage(BaseModel):
     type: Literal["audio_chunk"] = "audio_chunk"
     data: str = Field(min_length=1, max_length=512_000)
     mime_type: str = Field(default="audio/webm", max_length=100)
+    # Browser VAD finishes naturally after a short silence and caps an active
+    # speech segment at five seconds.
     duration_ms: int | None = Field(default=None, ge=0, le=5_000)
     speech_detected: bool = True
 

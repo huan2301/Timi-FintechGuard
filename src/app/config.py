@@ -42,13 +42,27 @@ class Settings(BaseSettings):
     # ---- Auth ----
     # Bắt buộc override ở production, xem validate_production_secrets().
     jwt_secret_key: str = "dev-only-insecure-secret-change-me"
-    jwt_algorithm: str = "HS256"
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=60, ge=1)
     remember_me_expire_days: int = Field(default=30, ge=1, le=90)
+    login_failure_limit: int = Field(default=5, ge=2, le=20)
+    login_lock_seconds: int = Field(default=300, ge=30, le=86_400)
+    pin_failure_limit: int = Field(default=5, ge=2, le=20)
+    pin_lock_seconds: int = Field(default=300, ge=30, le=86_400)
+    # Separate encryption material for virtual-card details. In development an
+    # empty value keeps existing local data readable through a legacy fallback.
+    card_encryption_key: str = ""
     history_cursor_secret: str = ""
     # Web OAuth client ID created in Google Cloud Console. This is an audience
     # identifier (not a secret) and must match VITE_GOOGLE_CLIENT_ID at build time.
     google_oauth_client_id: str = ""
+
+    # ---- Transactional email (registration, password reset, device login) ----
+    email_enabled: bool = False
+    email_provider: Literal["brevo_api"] = "brevo_api"
+    brevo_api_key: str = ""
+    email_from_address: str = ""
+    email_from_name: str = "Timi"
 
     # ---- Cloudinary media storage ----
     cloudinary_cloud_name: str = ""
@@ -174,16 +188,32 @@ class Settings(BaseSettings):
 
     def validate_production_secrets(self) -> None:
         """Chặn khởi động production với secret mặc định."""
-        if self.app_env == "production" and self.jwt_secret_key.startswith("dev-only"):
-            raise RuntimeError(
-                "JWT_SECRET_KEY vẫn là giá trị mặc định. "
-                "Đặt một secret ngẫu nhiên trước khi chạy production."
+        if self.app_env != "production":
+            return
+
+        def insecure_secret(value: str) -> bool:
+            lowered = value.strip().lower()
+            return len(value) < 32 or any(
+                marker in lowered for marker in ("dev-only", "replace_with", "change-me", "your_", "example")
             )
-        if self.app_env == "production" and not self.risk_telemetry_hash_key:
-            raise RuntimeError(
-                "RISK_TELEMETRY_HASH_KEY chưa được cấu hình. "
-                "Đặt một secret ngẫu nhiên riêng cho dữ liệu telemetry."
-            )
+
+        if insecure_secret(self.jwt_secret_key):
+            raise RuntimeError("JWT_SECRET_KEY phải là secret ngẫu nhiên tối thiểu 32 ký tự ở production.")
+        if insecure_secret(self.risk_telemetry_hash_key) or self.risk_telemetry_hash_key == self.jwt_secret_key:
+            raise RuntimeError("RISK_TELEMETRY_HASH_KEY phải là secret ngẫu nhiên riêng, tối thiểu 32 ký tự.")
+        if insecure_secret(self.card_encryption_key) or self.card_encryption_key in {
+            self.jwt_secret_key,
+            self.risk_telemetry_hash_key,
+        }:
+            raise RuntimeError("CARD_ENCRYPTION_KEY phải là secret ngẫu nhiên riêng, tối thiểu 32 ký tự.")
+        if not self.email_enabled:
+            raise RuntimeError("EMAIL_ENABLED phải là true để xác minh đăng nhập trên thiết bị mới.")
+        if not self.brevo_api_key.strip():
+            raise RuntimeError("BREVO_API_KEY phải được cấu hình cho Brevo API.")
+        if "@" not in self.email_from_address.strip():
+            raise RuntimeError("EMAIL_FROM_ADDRESS phải là sender đã xác minh trên Brevo.")
+        if any(origin == "*" or not origin.startswith("https://") for origin in self.cors_origin_list):
+            raise RuntimeError("CORS_ORIGINS production chỉ được chứa origin HTTPS cụ thể.")
 
 
 @lru_cache

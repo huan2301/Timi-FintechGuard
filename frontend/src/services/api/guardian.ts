@@ -28,6 +28,8 @@ export interface GuardianTranscriptEvent {
   status: "partial" | "final";
   speaker: GuardianSpeaker;
   text: string;
+  /** Server-side STT duration for this final segment, when server STT is used. */
+  stt_latency_ms?: number | null;
 }
 
 export interface GuardianRiskEvent {
@@ -39,6 +41,8 @@ export interface GuardianRiskEvent {
   recommended_action: "CONTINUE" | "MONITOR" | "PAUSE" | "STOP";
   explanation: string;
   signals: GuardianSignal[];
+  /** Model decision duration, omitted when an immediate safety floor is used. */
+  agent_latency_ms?: number | null;
 }
 
 export interface GuardianAlertEvent {

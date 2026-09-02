@@ -61,16 +61,23 @@ def _load_context(state: InterventionState) -> dict[str, Any]:
         .order_by(desc(TransactionWarning.displayed_at))
         .limit(1)
     )
-    logs = list(db.scalars(
-        select(InterventionLog)
-        .where(InterventionLog.transaction_id == transaction.id)
-        .order_by(InterventionLog.step_number, InterventionLog.created_at)
-    ).all())
-    trusted = db.scalar(select(TrustedRecipient).where(
-        TrustedRecipient.user_id == transaction.user_id,
-        TrustedRecipient.account_number == transaction.payee_account,
-        TrustedRecipient.bank_code == transaction.bank_code,
-    )) is not None
+    logs = list(
+        db.scalars(
+            select(InterventionLog)
+            .where(InterventionLog.transaction_id == transaction.id)
+            .order_by(InterventionLog.step_number, InterventionLog.created_at)
+        ).all()
+    )
+    trusted = (
+        db.scalar(
+            select(TrustedRecipient).where(
+                TrustedRecipient.user_id == transaction.user_id,
+                TrustedRecipient.account_number == transaction.payee_account,
+                TrustedRecipient.bank_code == transaction.bank_code,
+            )
+        )
+        is not None
+    )
     # Never let a client-provided step skip a prior persisted interaction.
     return {
         "transaction": transaction,
@@ -87,9 +94,7 @@ def _guidance(state: InterventionState) -> dict[str, Any]:
     step = state["step"]
     trusted = state.get("trusted", False)
     factors = [
-        signal.explanation
-        for signal in assessment.signals
-        if signal.score is not None and float(signal.score) > 0
+        signal.explanation for signal in assessment.signals if signal.score is not None and float(signal.score) > 0
     ]
     if step == 1:
         message = "Bước 1/2: Kiểm tra đúng người nhận. Hãy đối chiếu tên, số tài khoản và ngân hàng qua nguồn độc lập."
@@ -97,8 +102,15 @@ def _guidance(state: InterventionState) -> dict[str, Any]:
         actions = ["verify", "cancel"]
         node = "recipient_identity"
     else:
-        trust_note = " Người nhận đã nằm trong danh sách tin cậy của bạn, nhưng điều đó không loại trừ tài khoản bị chiếm quyền." if trusted else ""
-        message = "Bước 2/2: Kiểm tra kênh độc lập và áp lực. Không chuyển nếu bị thúc ép, yêu cầu giữ bí mật, phí mở khóa hoặc hứa lợi nhuận." + trust_note
+        trust_note = (
+            " Người nhận đã nằm trong danh sách tin cậy của bạn, nhưng điều đó không loại trừ tài khoản bị chiếm quyền."
+            if trusted
+            else ""
+        )
+        message = (
+            "Bước 2/2: Kiểm tra kênh độc lập và áp lực. Không chuyển nếu bị thúc ép, yêu cầu giữ bí mật, phí mở khóa hoặc hứa lợi nhuận."
+            + trust_note
+        )
         question = "Bạn đã kiểm chứng độc lập và vẫn muốn tiếp tục chuyển tiền không?"
         actions = ["proceed", "trust_recipient", "cancel"]
         node = "final_human_decision"

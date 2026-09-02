@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 FACE_VERIFICATION_AMOUNT_THRESHOLD = 10_000_000
 
 
@@ -18,6 +17,4 @@ def requires_face_verification(
     monetary threshold. Every transfer at or above the threshold requires Face
     ID regardless of its calculated risk level.
     """
-    return amount >= FACE_VERIFICATION_AMOUNT_THRESHOLD or (
-        risk_level == "high" and blacklist_match_found
-    )
+    return amount >= FACE_VERIFICATION_AMOUNT_THRESHOLD or (risk_level == "high" and blacklist_match_found)

@@ -19,6 +19,7 @@ export interface TokenResponse {
   access_token: string;
   token_type: "bearer";
   user: User;
+  location_confirmation_required: boolean;
 }
 
 export interface AccountOverview {
@@ -42,13 +43,25 @@ export interface SecurityCheck {
 export interface LoginRequest {
   email: string;
   password: string;
+  device_id: string;
   remember_me?: boolean;
 }
 
 export interface GoogleLoginRequest {
   credential: string;
+  device_id: string;
   remember_me?: boolean;
 }
+
+export interface DeviceVerificationRequiredResponse {
+  device_verification_required: true;
+  verification_token: string;
+  email: string;
+  expires_in_seconds: number;
+  message: string;
+}
+
+export type LoginResponse = TokenResponse | DeviceVerificationRequiredResponse;
 
 export interface GooglePhoneCompletionResponse {
   requires_phone: true;
@@ -57,7 +70,7 @@ export interface GooglePhoneCompletionResponse {
   full_name: string;
 }
 
-export type GoogleLoginResponse = TokenResponse | GooglePhoneCompletionResponse;
+export type GoogleLoginResponse = LoginResponse | GooglePhoneCompletionResponse;
 
 export interface RegisterRequest {
   full_name: string;
@@ -75,8 +88,14 @@ export interface LoginLocationRequest {
   client_context: LoginRiskClientContext;
 }
 
-export interface LoginLocationResponse {
+export interface LoginLocationResponse extends TokenResponse {
   recorded: boolean;
+}
+
+export interface NotificationPreferences {
+  transaction: boolean;
+  security: boolean;
+  promotion: boolean;
 }
 
 export interface FaceVerificationResponse {
@@ -88,8 +107,8 @@ export interface FaceVerificationResponse {
 }
 
 export const authApi = {
-  login: async (data: LoginRequest): Promise<TokenResponse> => {
-    const response = await axiosInstance.post<TokenResponse>("/v1/auth/login", data);
+  login: async (data: LoginRequest): Promise<LoginResponse> => {
+    const response = await axiosInstance.post<LoginResponse>("/v1/auth/login", data);
     return response.data;
   },
 
@@ -98,18 +117,18 @@ export const authApi = {
     return response.data;
   },
 
-  completeGooglePhone: async (data: { phone_completion_token: string; phone: string }): Promise<TokenResponse> => {
-    const response = await axiosInstance.post<TokenResponse>("/v1/auth/google/complete-phone", data);
+  completeGooglePhone: async (data: { phone_completion_token: string; phone: string }): Promise<LoginResponse> => {
+    const response = await axiosInstance.post<LoginResponse>("/v1/auth/google/complete-phone", data);
+    return response.data;
+  },
+
+  verifyLoginDevice: async (data: { verification_token: string; otp: string }): Promise<TokenResponse> => {
+    const response = await axiosInstance.post<TokenResponse>("/v1/auth/login/device/verify", data);
     return response.data;
   },
 
   recordLoginLocation: async (data: LoginLocationRequest): Promise<LoginLocationResponse> => {
     const response = await axiosInstance.post<LoginLocationResponse>("/v1/auth/login/location", data);
-    return response.data;
-  },
-
-  register: async (data: RegisterRequest): Promise<TokenResponse> => {
-    const response = await axiosInstance.post<TokenResponse>("/v1/auth/register", data);
     return response.data;
   },
 
@@ -128,8 +147,8 @@ export const authApi = {
     return response.data;
   },
 
-  verifyRegisterOtp: async (data: RegisterOtpRequest): Promise<TokenResponse> => {
-    const response = await axiosInstance.post<TokenResponse>("/v1/auth/register/verify-otp", data);
+  verifyRegisterOtp: async (data: RegisterOtpRequest): Promise<{ message: string }> => {
+    const response = await axiosInstance.post<{ message: string }>("/v1/auth/register/verify-otp", data);
     return response.data;
   },
 
@@ -215,8 +234,40 @@ export const authApi = {
     return response.data;
   },
 
+  deleteFaceEnrollment: async (): Promise<void> => {
+    await axiosInstance.delete("/v1/auth/face/enrollment");
+  },
+
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<TokenResponse> => {
+    const response = await axiosInstance.post<TokenResponse>("/v1/auth/change-password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
+
+  getNotificationPreferences: async (): Promise<NotificationPreferences> => {
+    const response = await axiosInstance.get<NotificationPreferences>(
+      "/v1/notifications/preferences",
+    );
+    return response.data;
+  },
+
+  updateNotificationPreferences: async (
+    preferences: NotificationPreferences,
+  ): Promise<NotificationPreferences> => {
+    const response = await axiosInstance.put<NotificationPreferences>(
+      "/v1/notifications/preferences",
+      preferences,
+    );
+    return response.data;
+  },
+
   logout: async () => {
-    localStorage.removeItem("token");
+    await axiosInstance.post("/v1/auth/logout");
   },
 forgotPassword: (email: string) =>
   axiosInstance.post("/v1/auth/forgot-password", { email }),

@@ -9,13 +9,7 @@ from src.app.services.scam_guardian import GuardianConversationState
 
 
 def _fake_response(payload: dict) -> SimpleNamespace:
-    return SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content=json.dumps(payload))
-            )
-        ]
-    )
+    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))])
 
 
 def test_direct_evidence_guardrail_stabilizes_otp_request(monkeypatch) -> None:
@@ -110,6 +104,20 @@ def test_immediate_policy_catches_unknown_server_stt_without_a_model_call() -> N
     assert result.recommended_action == "STOP"
     assert result.risk_level == "critical"
     assert result.signals[0].signal_type == "otp_request"
+    assert "Phát hiện yêu cầu" in result.explanation
+    assert "Phat hien" not in result.explanation
+
+
+def test_agent_payload_keeps_the_bounded_rolling_dialogue() -> None:
+    state = GuardianConversationState()
+    for index in range(20):
+        state.append("unknown", f"ngữ cảnh {index}")
+
+    payload = scam_guardian_agent._conversation_payload(state, "ngữ cảnh mới")
+
+    assert len(payload["conversation"]) == 12
+    assert payload["conversation"][0]["text"] == "ngữ cảnh 8"
+    assert payload["conversation"][-1]["text"] == "ngữ cảnh 19"
 
 
 def test_invalid_agent_json_fails_closed(monkeypatch) -> None:
@@ -129,9 +137,7 @@ def test_invalid_agent_json_fails_closed(monkeypatch) -> None:
 
     monkeypatch.setattr(scam_guardian_agent, "OpenAI", FakeOpenAI)
     with pytest.raises(scam_guardian_agent.GuardianAgentUnavailableError):
-        scam_guardian_agent.analyze_with_guardian_agent(
-            GuardianConversationState(), "nội dung"
-        )
+        scam_guardian_agent.analyze_with_guardian_agent(GuardianConversationState(), "nội dung")
 
     fallback = scam_guardian_agent.fail_closed_guardian_result("test")
     assert fallback.recommended_action == "STOP"
@@ -168,9 +174,7 @@ def test_agent_shape_aliases_are_normalized(monkeypatch) -> None:
             )
 
     monkeypatch.setattr(scam_guardian_agent, "OpenAI", FakeOpenAI)
-    result = scam_guardian_agent.analyze_with_guardian_agent(
-        GuardianConversationState(), "Đọc mã OTP"
-    )
+    result = scam_guardian_agent.analyze_with_guardian_agent(GuardianConversationState(), "Đọc mã OTP")
 
     assert result.risk_score == 86
     assert result.risk_level == "critical"
@@ -179,9 +183,7 @@ def test_agent_shape_aliases_are_normalized(monkeypatch) -> None:
 
 
 def test_rate_limit_message_produces_provider_backoff() -> None:
-    error = RuntimeError(
-        "Rate limit reached. Please try again in 4m52.464s."
-    )
+    error = RuntimeError("Rate limit reached. Please try again in 4m52.464s.")
     error.status_code = 429  # type: ignore[attr-defined]
     assert scam_guardian_agent._retry_after_seconds(error) == pytest.approx(292.464)
 
@@ -222,9 +224,7 @@ def test_guardian_uses_a_backup_key_after_rate_limit(monkeypatch) -> None:
 
     monkeypatch.setattr(scam_guardian_agent, "OpenAI", FakeOpenAI)
 
-    result = scam_guardian_agent.analyze_with_guardian_agent(
-        GuardianConversationState(), "Cuộc gọi thông thường"
-    )
+    result = scam_guardian_agent.analyze_with_guardian_agent(GuardianConversationState(), "Cuộc gọi thông thường")
 
     assert calls == ["primary-key", "backup-key"]
     assert result.recommended_action == "CONTINUE"

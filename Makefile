@@ -1,23 +1,24 @@
-.PHONY: run test lint format typecheck check clean
+.PHONY: run test lint format format-check audit check
+
+PYTHON ?= python
 
 run:
-	uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+	$(PYTHON) -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 test:
-	pytest tests/ -v
+	$(PYTHON) -m pytest tests -q --cov=src/app --cov-report=term-missing --cov-fail-under=50
 
 lint:
-	ruff check src/ tests/
+	$(PYTHON) -m ruff check src tests eval scripts
 
 format:
-	ruff format src/ tests/
+	$(PYTHON) -m ruff format src tests eval scripts
 
-typecheck:
-	mypy src/
+format-check:
+	$(PYTHON) -m ruff format --check src tests eval scripts
 
-check: lint format test
+audit:
+	$(PYTHON) -m pip_audit -r requirements.txt
+	npm --prefix frontend audit --audit-level=high
 
-clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type d -name .pytest_cache -exec rm -rf {} +
-	find . -type d -name .ruff_cache -exec rm -rf {} +
+check: lint format-check test audit

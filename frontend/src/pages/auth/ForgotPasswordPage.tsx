@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { authApi } from "@/services/api/auth";
 import TimiLogo from "@/components/brand/TimiLogo";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 type Step = "email" | "otp" | "done";
 
@@ -37,10 +38,8 @@ export default function ForgotPasswordPage() {
       );
       setStep("otp");
     },
-    onError: (err: any) => {
-      setError(
-        err.response?.data?.detail || "Không gửi được OTP. Thử lại sau.",
-      );
+    onError: (err: unknown) => {
+      setError(getApiErrorMessage(err, "Không gửi được OTP. Thử lại sau."));
     },
   });
 
@@ -55,8 +54,8 @@ export default function ForgotPasswordPage() {
       setError("");
       setStep("done");
     },
-    onError: (err: any) => {
-      setError(err.response?.data?.detail || "Đặt lại mật khẩu thất bại.");
+    onError: (err: unknown) => {
+      setError(getApiErrorMessage(err, "Đặt lại mật khẩu thất bại."));
     },
   });
 

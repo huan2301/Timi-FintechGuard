@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
-from jose import JWTError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -26,7 +25,7 @@ from src.app.agents import (
 )
 from src.app.config import get_settings
 from src.app.core.deps import get_current_user
-from src.app.core.security import decode_access_token
+from src.app.core.security import JWTError, decode_access_token
 from src.app.db.session import SessionLocal, get_db
 from src.app.models.scam_guardian import (
     ScamAlert,
@@ -74,9 +73,7 @@ def _recommendation_for_action(action: str) -> str:
     }.get(action, "Tạm dừng để chờ Guardian Risk Agent đánh giá.")
 
 
-def _get_owned_session(
-    db: Session, session_id: uuid.UUID, user_id: uuid.UUID
-) -> ScamGuardianSession:
+def _get_owned_session(db: Session, session_id: uuid.UUID, user_id: uuid.UUID) -> ScamGuardianSession:
     session = db.get(ScamGuardianSession, session_id)
     if session is None or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên Scam Guardian")
@@ -166,12 +163,17 @@ def finish_guardian_session(
     return _session_out(session)
 
 
-def _user_id_from_token(token: str) -> uuid.UUID:
+def _session_claims_from_token(token: str) -> tuple[uuid.UUID, int]:
     try:
         payload = decode_access_token(token)
-        if payload.get("purpose") is not None:
-            raise ValueError("purpose-bound token")
-        return uuid.UUID(str(payload["sub"]))
+        token_version = payload.get("token_version")
+        if (
+            payload.get("purpose") is not None
+            or payload.get("location_confirmed") is not True
+            or type(token_version) is not int
+        ):
+            raise ValueError("token cannot authenticate a Guardian session")
+        return uuid.UUID(str(payload["sub"])), token_version
     except (JWTError, KeyError, TypeError, ValueError):
         raise ValueError("invalid access token") from None
 
@@ -190,10 +192,7 @@ def _persist_risk_result(
             result,
             risk_level="critical",
             recommended_action="STOP",
-            explanation=(
-                f"{result.explanation} Guardian đã giữ lệnh STOP trước đó "
-                "cho đến khi phiên gọi kết thúc."
-            ),
+            explanation=(f"{result.explanation} Guardian đã giữ lệnh STOP trước đó cho đến khi phiên gọi kết thúc."),
         )
 
     session.max_risk_score = max(session.max_risk_score, result.risk_score)
@@ -227,25 +226,21 @@ def _persist_risk_result(
                 confidence=signal.confidence,
                 weight=signal.weight,
                 # Never persist transcript-derived text without explicit consent.
-                evidence=(
-                    {"text": signal.evidence}
-                    if session.retain_transcript
-                    else {"matched": True}
-                ),
+                evidence=({"text": signal.evidence} if session.retain_transcript else {"matched": True}),
             )
         )
     db.commit()
     return result
 
 
-def _risk_payload(result: GuardianRiskResult) -> dict[str, Any]:
+def _risk_payload(
+    result: GuardianRiskResult,
+    *,
+    agent_latency_ms: int | None = None,
+) -> dict[str, Any]:
     return {
         "type": "risk_update",
-        "decision_source": (
-            "fail_closed"
-            if result.scenario == "agent_unavailable"
-            else "guardian_agent"
-        ),
+        "decision_source": ("fail_closed" if result.scenario == "agent_unavailable" else "guardian_agent"),
         "risk_score": result.risk_score,
         "risk_level": result.risk_level,
         "scenario": result.scenario,
@@ -259,6 +254,10 @@ def _risk_payload(result: GuardianRiskResult) -> dict[str, Any]:
             }
             for signal in result.signals
         ],
+        # Operational telemetry only. It is returned over the authenticated
+        # socket and is surfaced in the UI only through the hidden diagnostic
+        # shortcut; it is not transcript content and is not persisted here.
+        "agent_latency_ms": agent_latency_ms,
     }
 
 
@@ -290,7 +289,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
         try:
             auth_raw = await asyncio.wait_for(websocket.receive_json(), timeout=5)
             auth = GuardianAuthMessage.model_validate(auth_raw)
-            user_id = _user_id_from_token(auth.token)
+            user_id, token_version = _session_claims_from_token(auth.token)
         except (TimeoutError, ValueError, TypeError):
             await websocket.close(code=4401, reason="Authentication required")
             return
@@ -299,7 +298,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
             await websocket.close(code=4403, reason="Session does not belong to user")
             return
         user = db.get(User, user_id)
-        if user is None or not user.is_active:
+        if user is None or not user.is_active or user.auth_token_version != token_version:
             await websocket.close(code=4401, reason="User is not active")
             return
 
@@ -309,11 +308,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
             {
                 "type": "ready",
                 "session_id": str(session.id),
-                "transcription_mode": (
-                    "server_groq_whisper"
-                    if server_stt_enabled
-                    else "browser_speech_recognition"
-                ),
+                "transcription_mode": ("server_groq_whisper" if server_stt_enabled else "browser_speech_recognition"),
                 "audio_persistence": "discarded",
                 "risk_decision_mode": "guardian_agent",
                 "risk_score": 0,
@@ -321,7 +316,11 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
             }
         )
 
-        async def process_final_transcript(transcript: GuardianTranscriptMessage) -> None:
+        async def process_final_transcript(
+            transcript: GuardianTranscriptMessage,
+            *,
+            stt_latency_ms: int | None = None,
+        ) -> None:
             nonlocal agent_failure_streak, agent_retry_after_until
             nonlocal last_action, last_agent_analysis_at
             # Browser SpeechRecognition can produce the same stock YouTube
@@ -353,6 +352,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                 segment_id = segment.id
 
             now = time.monotonic()
+            agent_latency_ms: int | None = None
             # Direct high-risk evidence must not wait for the regular LLM
             # cadence. It also continues to protect calls during a temporary
             # provider outage, without pretending to infer ambiguous context.
@@ -371,6 +371,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                         "status": "final",
                         "speaker": transcript.speaker,
                         "text": transcript.text,
+                        "stt_latency_ms": stt_latency_ms,
                     }
                 )
                 return
@@ -380,11 +381,13 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                 try:
                     # LLM inference is blocking; keep the WebSocket event loop
                     # responsive while the agent evaluates the conversation.
+                    agent_started_at = time.perf_counter()
                     result = await asyncio.to_thread(
                         get_multi_agent_supervisor().dispatch,
                         AgentId.CALL_GUARDIAN,
                         GuardianRiskTask(state=state, latest_text=transcript.text),
                     )
+                    agent_latency_ms = round((time.perf_counter() - agent_started_at) * 1_000)
                     agent_failure_streak = 0
                     agent_retry_after_until = 0.0
                 except GuardianAgentUnavailableError as exc:
@@ -403,7 +406,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                     # Do not turn a single transient provider failure into a
                     # critical scam alert. Three consecutive failures enter the
                     # explicit fail-closed STOP state; both states still pause
-                    #/block transactions through the backend guard below.
+                    # /block transactions through the backend guard below.
                     result = (
                         fail_closed_guardian_result(str(exc))
                         if agent_failure_streak >= 3
@@ -424,9 +427,10 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                     "status": "final",
                     "speaker": transcript.speaker,
                     "text": transcript.text,
+                    "stt_latency_ms": stt_latency_ms,
                 }
             )
-            await websocket.send_json(_risk_payload(result))
+            await websocket.send_json(_risk_payload(result, agent_latency_ms=agent_latency_ms))
             if last_action != "STOP" and result.recommended_action == "STOP":
                 alert = ScamAlert(
                     session_id=session.id,
@@ -480,11 +484,10 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                     try:
                         audio_bytes = base64.b64decode(audio.data, validate=True)
                     except (binascii.Error, ValueError):
-                        await websocket.send_json(
-                            {"type": "error", "message": "Audio chunk không hợp lệ."}
-                        )
+                        await websocket.send_json({"type": "error", "message": "Audio chunk không hợp lệ."})
                         continue
                     try:
+                        stt_started_at = time.perf_counter()
                         transcription = await asyncio.to_thread(
                             get_multi_agent_supervisor().dispatch,
                             AgentId.CALL_GUARDIAN,
@@ -496,6 +499,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                         if not isinstance(transcription, GuardianTranscriptionResult):
                             raise TypeError("Call Guardian Agent trả về transcript không hợp lệ")
                         text = transcription.text
+                        stt_latency_ms = round((time.perf_counter() - stt_started_at) * 1_000)
                     except Exception:
                         logger.exception("Guardian server-side STT failed")
                         await websocket.send_json(
@@ -506,6 +510,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                             }
                         )
                         text = ""
+                        stt_latency_ms = None
                     if text:
                         await process_final_transcript(
                             GuardianTranscriptMessage(
@@ -513,7 +518,8 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                                 speaker="unknown",
                                 confidence=None,
                                 source="server",
-                            )
+                            ),
+                            stt_latency_ms=stt_latency_ms,
                         )
                     else:
                         await websocket.send_json(
@@ -544,9 +550,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                 session.status = "completed"
                 session.ended_at = datetime.now(UTC)
                 session.final_risk_score = session.max_risk_score
-                session.final_recommendation = _recommendation_for_action(
-                    session.agent_action
-                )
+                session.final_recommendation = _recommendation_for_action(session.agent_action)
                 db.commit()
                 await websocket.send_json(
                     {
@@ -559,9 +563,7 @@ async def guardian_stream(websocket: WebSocket, session_id: uuid.UUID) -> None:
                 )
                 break
 
-            await websocket.send_json(
-                {"type": "error", "message": "Guardian event không được hỗ trợ"}
-            )
+            await websocket.send_json({"type": "error", "message": "Guardian event không được hỗ trợ"})
     except WebSocketDisconnect:
         if session is not None and session.status == "active":
             session.status = "interrupted"

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class BlacklistCreate(BaseModel):
@@ -153,19 +153,51 @@ class UserStatusUpdate(BaseModel):
     is_active: bool
 
 
+class AdminRuntimeSettingsOut(BaseModel):
+    app_env: Literal["development", "production", "test"]
+    guardian_agent_enabled: bool
+    guardian_stt_enabled: bool
+    llm_explanation_enabled: bool
+    task_navigator_agent_enabled: bool
+    rag_enabled: bool
+    face_model_preload: bool
+    risk_rules_version: str
+
+
+ContentPageKey = Literal[
+    "home", "dashboard", "privacy", "mission", "terms", "services", "help", "cookies", "download", "demo"
+]
+ContentType = Literal["article", "review", "image"]
+ContentPlacement = Literal["top", "middle", "bottom"]
+
+
 class ContentItemCreate(BaseModel):
-    page_key: Literal["home", "dashboard", "privacy", "mission", "terms", "services", "help", "cookies", "download", "demo"]
-    content_type: Literal["article", "review", "image"]
+    page_key: ContentPageKey
+    content_type: ContentType
     title: str | None = Field(default=None, max_length=255)
     body: str | None = Field(default=None, max_length=20_000)
     image_url: str | None = Field(default=None, max_length=1000)
-    placement: Literal["top", "middle", "bottom"] = "middle"
+    placement: ContentPlacement = "middle"
     is_published: bool = True
     sort_order: int = Field(default=0, ge=0, le=10_000)
 
 
-class ContentItemUpdate(ContentItemCreate):
-    pass
+class ContentItemUpdate(BaseModel):
+    page_key: ContentPageKey | None = None
+    content_type: ContentType | None = None
+    title: str | None = Field(default=None, max_length=255)
+    body: str | None = Field(default=None, max_length=20_000)
+    image_url: str | None = Field(default=None, max_length=1000)
+    placement: ContentPlacement | None = None
+    is_published: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=10_000)
+
+    @model_validator(mode="after")
+    def reject_null_for_required_columns(self) -> "ContentItemUpdate":
+        for field_name in ("page_key", "content_type", "placement", "is_published", "sort_order"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} không được để trống")
+        return self
 
 
 class ContentItemOut(ContentItemCreate):

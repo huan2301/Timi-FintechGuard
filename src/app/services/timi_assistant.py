@@ -11,6 +11,7 @@ from openai import OpenAI
 
 from src.app.config import get_settings
 from src.app.services.agent_provider_config import chat_provider_config, is_rate_limit_error
+from src.app.services.guardian_alert_window import guardian_alert_elapsed_label
 
 if TYPE_CHECKING:
     from src.app.schemas.assistant import AssistantChatTurn, AssistantRiskContext
@@ -38,8 +39,7 @@ ADMIN_TRANSFER_ANSWER = (
     "OTP hoặc PIN, hãy dừng lại và xác minh bằng kênh chính thức."
 )
 SENSITIVE_CREDENTIAL_ANSWER = (
-    "Bạn đừng gửi OTP, PIN hoặc mật khẩu vào chat nhé. Timi không bao giờ yêu cầu "
-    "các mã này qua hội thoại."
+    "Bạn đừng gửi OTP, PIN hoặc mật khẩu vào chat nhé. Timi không bao giờ yêu cầu các mã này qua hội thoại."
 )
 HISTORY_GUIDANCE_ANSWER = (
     "Ở trang Lịch sử, bạn có thể tra cứu các giao dịch của chính tài khoản đang đăng nhập: "
@@ -50,8 +50,7 @@ HISTORY_GUIDANCE_ANSWER = (
     "dùng lịch sử của tài khoản khác."
 )
 GREETING_ANSWER = (
-    "Chào bạn! Mình là Timi, trợ lý của ứng dụng. Bạn cần hỗ trợ chuyển tiền, "
-    "QR, Face ID hay an toàn giao dịch?"
+    "Chào bạn! Mình là Timi, trợ lý của ứng dụng. Bạn cần hỗ trợ chuyển tiền, QR, Face ID hay an toàn giao dịch?"
 )
 THANKS_ANSWER = "Không có gì! Khi cần hỗ trợ các chức năng của Timi, bạn cứ nhắn mình nhé."
 ACKNOWLEDGEMENT_ANSWER = "Được rồi. Khi cần hỗ trợ, bạn cứ nói mình biết nhé."
@@ -67,12 +66,25 @@ IDENTITY_ANSWER = (
 
 _INTENT_TERMS = {
     "scam_safety": (
-        "lua dao", "scam", "canh bao", "cuoc goi", "blacklist", "link la",
-        "duong dan", "nguoi la", "otp",
+        "lua dao",
+        "scam",
+        "canh bao",
+        "cuoc goi",
+        "blacklist",
+        "link la",
+        "duong dan",
+        "nguoi la",
+        "otp",
     ),
     "transfer": (
-        "chuyen tien", "chuyen khoan", "gui tien", "tao giao dich", "nguoi nhan",
-        "so tai khoan", "ngan hang", "thanh toan",
+        "chuyen tien",
+        "chuyen khoan",
+        "gui tien",
+        "tao giao dich",
+        "nguoi nhan",
+        "so tai khoan",
+        "ngan hang",
+        "thanh toan",
     ),
     "qr": ("qr", "quet ma", "ma thanh toan"),
     "face": ("face id", "faceid", "khuon mat", "nhan dien khuon mat"),
@@ -110,8 +122,7 @@ _ADMIN_TRANSFER_CUES = (
     "thanh toan cho",
 )
 _SENSITIVE_CREDENTIAL_PATTERN = re.compile(
-    r"(?:ma\s*(?:otp|pin)|otp|pin)\s*[:=-]?\s*\d{4,}"
-    r"|(?:mat\s*khau|password)\s*[:=-]?\s*[^\s,;]{4,}",
+    r"(?:ma\s*(?:otp|pin)|otp|pin)\s*[:=-]?\s*\d{4,}" r"|(?:mat\s*khau|password)\s*[:=-]?\s*[^\s,;]{4,}",
     re.IGNORECASE,
 )
 _CASUAL_MESSAGE_ANSWERS = {
@@ -159,7 +170,8 @@ _CONVERSATIONAL_MESSAGE_PATTERNS = frozenset(
     }
 )
 
-_SYSTEM_INSTRUCTIONS = """
+_SYSTEM_INSTRUCTIONS = (
+    """
 Bạn là Timi, trợ lý nhỏ thân thiện của ứng dụng Timi Banking Anti-Scam.
 Chỉ được trả lời bằng tiếng Việt, ngắn gọn, rõ ràng và chỉ trong các phạm vi:
 - cách dùng chuyển tiền, QR, Face ID, PIN, đăng nhập/vị trí, lịch sử giao dịch;
@@ -181,11 +193,14 @@ Không bao giờ yêu cầu, tiếp nhận, lặp lại hoặc suy luận OTP, P
 ảnh khuôn mặt hay số tài khoản đầy đủ. Không khẳng định đã xem dữ liệu tài khoản, lịch sử,
 giao dịch hoặc blacklist của người dùng nếu bạn không được cung cấp dữ liệu đó.
 Bạn không thể tự chuyển/hủy tiền hoặc thay đổi thiết lập. Nếu người dùng hỏi ngoài phạm vi,
-trả lời đúng câu sau: """ + OUT_OF_SCOPE_ANSWER + """
+trả lời đúng câu sau: """
+    + OUT_OF_SCOPE_ANSWER
+    + """
 
 Với câu hỏi trong phạm vi, hãy trả lời hoàn chỉnh trong tối đa khoảng 250 từ. Nếu dùng danh
 sách bước hoặc gạch đầu dòng, luôn kết thúc trọn vẹn từng mục và toàn bộ câu trả lời; không
 để dở dang ở dấu gạch đầu dòng, tiêu đề hoặc câu chưa hoàn chỉnh."""
+)
 
 _RAG_INSTRUCTIONS = """
 Khi có phần CONTEXT NGUỒN bên dưới, chỉ dùng context đó cho các thông tin về nội dung công
@@ -212,10 +227,24 @@ Không được tự nghĩ ra một kịch bản lừa đảo không có trong b
 cấp. Nếu không đủ căn cứ để gọi tên phương thức, hãy nói rõ chỉ cần xác minh thêm. Phân biệt dấu
 hiệu cảnh báo với kết luận chắc chắn; không khẳng định người nhận là kẻ lừa đảo. Không yêu cầu
 hoặc nhắc lại OTP, PIN, mật khẩu, số tài khoản đầy đủ hay ảnh khuôn mặt. Không tự chuyển, hủy
-hoặc xác nhận giao dịch. Trả lời bằng tiếng Việt, tối đa 120 từ, theo thứ tự: dấu hiệu chính →
-vì sao cần dừng lại → việc nên làm. Kết thúc bằng một câu hỏi kiểm tra ngắn để người dùng tự xác
-minh. Trong chế độ Risk Coach, mọi câu hỏi về cảnh báo đều thuộc phạm vi; tuyệt đối không trả về
-câu “Mình chỉ hỗ trợ các chức năng của Timi”.
+hoặc xác nhận giao dịch. Trả lời bằng tiếng Việt, tối đa 100 từ và nói như một người đang hỗ trợ
+trực tiếp: mở đầu bằng 1–2 câu tự nhiên, sau đó chỉ dùng tối đa hai gạch đầu dòng nếu thật sự cần.
+Không lặp lại các nhãn máy móc như “Dấu hiệu chính”, “Vì sao cần dừng lại”, “Việc nên làm” trong
+mỗi phản hồi; đặc biệt khi người dùng vừa trả lời một câu hỏi dẫn dắt, hãy trả lời thẳng vào câu
+trả lời đó. Mỗi bước phải nằm ở một dòng riêng, không dùng ký tự gạch chéo ngược để xuống dòng.
+Kết thúc bằng đúng một câu hỏi kiểm tra ngắn để người dùng tự xác minh. Trong chế độ Risk Coach,
+mọi câu hỏi về cảnh báo đều thuộc phạm vi; tuyệt đối không trả về câu “Mình chỉ hỗ trợ các chức
+năng của Timi”.
+
+Không dùng từ chuyên môn như “rule”, “blacklist” hoặc “tín hiệu hệ thống” trong câu trả lời cho
+người dùng. Đừng bảo người dùng tự tra danh sách nội bộ của Timi; phần đó Timi đã kiểm tra. Thay
+vào đó, hãy hướng dẫn đơn giản: tạm dừng, tự gọi/làm rõ với người nhận qua số liên hệ đáng tin,
+và chỉ chuyển khi họ xác nhận được lý do cùng thông tin nhận tiền.
+
+Khi NGỮ CẢNH có mục Call Guardian, phải nói rõ đây là cảnh báo từ một cuộc gọi trong thời gian
+được nêu, không phải kết luận chắc chắn về người nhận. Hãy ưu tiên hỏi liệu người nhận có liên
+quan đến người đã gọi yêu cầu chuyển tiền trong cuộc gọi đó hay không. Chỉ dùng đúng khoảng thời
+gian do máy chủ cung cấp; không tự đoán thời điểm hoặc nội dung cuộc gọi.
 """.strip()
 
 
@@ -227,6 +256,10 @@ _REWARD_CLAIM_TERMS = (
     "nhan uu dai",
 )
 _TRAVEL_REWARD_TERMS = ("ve may bay", "ve du lich", "chuyen du lich")
+_RECENT_GUARDIAN_QUESTION_PATTERN = re.compile(
+    r"Người nhận này có phải là người đã gọi và yêu cầu bạn chuyển tiền "
+    r"trong cuộc gọi bị Timi cảnh báo (?:vừa xảy ra|\d+ phút trước|khoảng \d+ giờ trước) không\?"
+)
 
 
 def risk_coach_reasoning_cues(context: AssistantRiskContext) -> list[str]:
@@ -240,6 +273,14 @@ def risk_coach_reasoning_cues(context: AssistantRiskContext) -> list[str]:
     note = _normalize(context.note or "")
     signals = _normalize(" ".join(context.signals))
     cues: list[str] = []
+
+    if context.guardian_alert_age_minutes is not None:
+        elapsed = guardian_alert_elapsed_label(context.guardian_alert_age_minutes)
+        cues.append(
+            f"Timi vừa cảnh báo một cuộc gọi đáng ngờ {elapsed}. Điều này không khẳng định "
+            "giao dịch là lừa đảo, nhưng nếu người nhận liên quan đến cuộc gọi đó, bạn nên "
+            "dừng lại và tự xác minh."
+        )
 
     reward_related = any(term in note for term in _REWARD_CLAIM_TERMS)
     travel_related = any(term in note for term in _TRAVEL_REWARD_TERMS)
@@ -270,9 +311,7 @@ def risk_coach_reasoning_cues(context: AssistantRiskContext) -> list[str]:
             "tục sau khi xác minh đề nghị qua kênh chính thức."
         )
     if any(phrase in signals or phrase in note for phrase in ("chuyen tien gap", "ngay lap tuc", "giu bi mat")):
-        cues.append(
-            "Yếu tố gấp gáp hoặc giữ bí mật thường khiến người dùng không kịp xác minh độc lập."
-        )
+        cues.append("Yếu tố gấp gáp hoặc giữ bí mật thường khiến người dùng không kịp xác minh độc lập.")
     return cues[:3]
 
 
@@ -299,6 +338,11 @@ def format_risk_coach_context(context: AssistantRiskContext) -> str:
         lines.extend(f"  • {signal.strip()}" for signal in context.signals if signal.strip())
     if context.warning_message:
         lines.append(f"- Khuyến nghị hiện tại: {context.warning_message.strip()}")
+    if context.guardian_alert_age_minutes is not None:
+        lines.append(
+            "- Call Guardian: đã phát cảnh báo cuộc gọi đáng ngờ "
+            f"{guardian_alert_elapsed_label(context.guardian_alert_age_minutes)}."
+        )
     reasoning_cues = risk_coach_reasoning_cues(context)
     if reasoning_cues:
         lines.append("- Mối liên hệ cần giải thích (đã đối chiếu từ dữ liệu trên):")
@@ -312,10 +356,14 @@ def risk_coach_questions(context: AssistantRiskContext) -> list[str]:
     questions: list[str] = []
     note = _normalize(context.note or "")
     signals = _normalize(" ".join(context.signals))
-    if any(term in note for term in _REWARD_CLAIM_TERMS):
+    if context.guardian_alert_age_minutes is not None:
+        elapsed = guardian_alert_elapsed_label(context.guardian_alert_age_minutes)
         questions.append(
-            "Bạn có đang được yêu cầu chuyển phí hoặc đặt cọc để nhận thưởng/vé không?"
+            "Người nhận này có phải là người đã gọi và yêu cầu bạn chuyển tiền "
+            f"trong cuộc gọi bị Timi cảnh báo {elapsed} không?"
         )
+    if any(term in note for term in _REWARD_CLAIM_TERMS):
+        questions.append("Bạn có đang được yêu cầu chuyển phí hoặc đặt cọc để nhận thưởng/vé không?")
     elif context.note and context.note.strip():
         questions.append("Bạn có tự viết nội dung này và hiểu rõ mục đích chuyển tiền không?")
     if context.risk_level == "high" or "danh dau" in signals:
@@ -327,12 +375,50 @@ def risk_coach_questions(context: AssistantRiskContext) -> list[str]:
     return questions[:3]
 
 
-def _risk_coach_fallback(context: AssistantRiskContext) -> str:
+def canonical_risk_coach_guided_question(
+    context: AssistantRiskContext,
+    question: str,
+) -> str | None:
+    """Validate a clicked prompt while safely refreshing elapsed call time.
+
+    The browser may submit a question displayed one minute earlier.  Accept
+    only the fixed Guardian-question shape, then replace its elapsed text with
+    the current server-derived question.  This preserves the selected-turn
+    context without accepting arbitrary browser prompt injection.
+    """
+
+    candidate = question.strip()
+    questions = risk_coach_questions(context)
+    if candidate in questions:
+        return candidate
+    if context.guardian_alert_age_minutes is not None and _RECENT_GUARDIAN_QUESTION_PATTERN.fullmatch(candidate):
+        return questions[0]
+    return None
+
+
+def _risk_coach_fallback(
+    context: AssistantRiskContext,
+    *,
+    follow_up: bool = False,
+) -> str:
     """Keep the warning flow useful if a provider returns a scope fallback."""
 
-    signal_text = "; ".join(
-        signal.strip()[:160] for signal in context.signals if signal.strip()
-    )
+    if context.guardian_alert_age_minutes is not None:
+        elapsed = guardian_alert_elapsed_label(context.guardian_alert_age_minutes)
+        opening = "Cảm ơn bạn đã chia sẻ. " if follow_up else "Timi vừa nhận cảnh báo về một cuộc gọi đáng ngờ "
+        if follow_up:
+            return (
+                f"{opening}Vì giao dịch này được kiểm tra sau cảnh báo cuộc gọi {elapsed}, "
+                "bạn đừng chuyển tiền vội. Hãy tự liên hệ lại với người nhận bằng số bạn đã lưu "
+                "hoặc một kênh đáng tin để xác nhận lý do chuyển tiền. Bạn đã làm được việc đó chưa?"
+            )
+        return (
+            f"{opening}{elapsed}. Đừng chuyển tiền vội nếu giao dịch có liên quan đến cuộc gọi đó. "
+            "Hãy tự liên hệ lại với người nhận qua một kênh đáng tin trước. "
+            f"{risk_coach_questions(context)[0]}"
+        )
+
+    signal_text = "; ".join(signal.strip()[:160] for signal in context.signals if signal.strip())
     signal_text = signal_text[:360]
     if signal_text:
         reason = f"Timi đang lưu ý vì {signal_text.rstrip('.!?…')}."
@@ -355,10 +441,8 @@ def _risk_coach_fallback(context: AssistantRiskContext) -> str:
         if context.note and context.note.strip()
         else "Giao dịch không có nội dung chuyển khoản, nên Timi dựa vào cảnh báo và các dấu hiệu khác."
     )
-    return (
-        f"{reason} {method} {content_note} "
-        "Bạn đã tự gọi người nhận bằng một số tin cậy để xác nhận chưa?"
-    )
+    verification_question = risk_coach_questions(context)[0]
+    return f"{reason} {method} {content_note} {verification_question}"
 
 
 def _is_generic_scope_answer(answer: str) -> bool:
@@ -370,9 +454,7 @@ def _normalize(value: str) -> str:
     # U+0111 (đ) is not a combining character, so normal Unicode accent
     # stripping alone does not make Vietnamese text comparable to ASCII
     # intent/cue vocabulary.
-    return "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    ).replace("đ", "d")
+    return "".join(character for character in decomposed if not unicodedata.combining(character)).replace("đ", "d")
 
 
 def contains_sensitive_credential(message: str) -> bool:
@@ -428,27 +510,23 @@ def is_in_scope(message: str) -> bool:
 
 def is_history_guidance_question(message: str) -> bool:
     normalized = _normalize(message)
-    return (
-        any(term in normalized for term in _INTENT_TERMS["history"])
-        and any(
-            cue in normalized
-            for cue in (
-                "tra cuu",
-                "co the xem gi",
-                "xem gi",
-                "trang lich su",
-                "bo loc",
-                "tim giao dich",
-            )
+    return any(term in normalized for term in _INTENT_TERMS["history"]) and any(
+        cue in normalized
+        for cue in (
+            "tra cuu",
+            "co the xem gi",
+            "xem gi",
+            "trang lich su",
+            "bo loc",
+            "tim giao dich",
         )
     )
 
 
 def _is_admin_transfer_request(message: str) -> bool:
     normalized = _normalize(message)
-    return (
-        any(term in normalized for term in _ADMIN_TERMS)
-        and any(phrase in normalized for phrase in _ADMIN_TRANSFER_CUES)
+    return any(term in normalized for term in _ADMIN_TERMS) and any(
+        phrase in normalized for phrase in _ADMIN_TRANSFER_CUES
     )
 
 
@@ -510,10 +588,7 @@ def answer_timi_question(
     if not provider.api_key:
         raise RuntimeError("Chat Agent API key is not configured")
 
-    conversation = [
-        {"role": turn.role, "content": turn.content}
-        for turn in history[-6:]
-    ]
+    conversation = [{"role": turn.role, "content": turn.content} for turn in history[-6:]]
     conversation.append({"role": "user", "content": message.strip()})
     # Groq exposes the Chat Completions API through an OpenAI-compatible base URL.
     # The key remains server-side; neither the browser nor the chat response sees it.
@@ -525,10 +600,7 @@ def answer_timi_question(
                 system_messages.append(
                     {
                         "role": "system",
-                        "content": (
-                            f"{_RISK_COACH_INSTRUCTIONS}\n\n"
-                            f"{format_risk_coach_context(risk_context)}"
-                        ),
+                        "content": (f"{_RISK_COACH_INSTRUCTIONS}\n\n{format_risk_coach_context(risk_context)}"),
                     }
                 )
                 if risk_guided_question and risk_guided_question.strip():
@@ -539,9 +611,11 @@ def answer_timi_question(
                                 "NGỮ CẢNH CÂU HỎI DẪN DẮT: Người dùng đã bấm chọn câu hỏi "
                                 f"sau trong giao diện: {risk_guided_question.strip()[:300]}\n"
                                 "Tin nhắn mới nhất của người dùng là câu trả lời cho chính câu hỏi này. "
-                                "Hãy trả lời tiếp mạch cảnh báo, không chào lại hoặc coi đó là một cuộc "
-                                "trò chuyện mới. Nếu câu trả lời xác nhận dấu hiệu rủi ro, nêu bước an toàn "
-                                "cụ thể và một câu hỏi kiểm tra tiếp theo."
+                                "Hãy trả lời tiếp mạch cảnh báo như một cuộc hội thoại tự nhiên, không chào "
+                                "lại, không coi đó là một cuộc trò chuyện mới và không lặp lại các tiêu đề "
+                                "‘Dấu hiệu chính/Vì sao cần dừng lại/Việc nên làm’. Nếu câu trả lời xác nhận "
+                                "dấu hiệu rủi ro, hãy khuyên dừng giao dịch, nêu tối đa hai bước dễ làm và một "
+                                "câu hỏi kiểm tra tiếp theo. Mỗi bước phải ở một dòng riêng."
                             ),
                         }
                     )
@@ -549,10 +623,7 @@ def answer_timi_question(
                 system_messages.append(
                     {
                         "role": "system",
-                        "content": (
-                            f"{_RAG_INSTRUCTIONS}\n\nCONTEXT NGUỒN:\n"
-                            f"{knowledge_context.strip()}"
-                        ),
+                        "content": (f"{_RAG_INSTRUCTIONS}\n\nCONTEXT NGUỒN:\n{knowledge_context.strip()}"),
                     }
                 )
             response = OpenAI(
@@ -575,5 +646,8 @@ def answer_timi_question(
         raise RuntimeError("Chat Agent did not return a response")
     answer = (response.choices[0].message.content or "").strip()
     if risk_context is not None and (not answer or _is_generic_scope_answer(answer)):
-        answer = _risk_coach_fallback(risk_context)
+        answer = _risk_coach_fallback(
+            risk_context,
+            follow_up=bool(risk_guided_question and risk_guided_question.strip()),
+        )
     return (answer if answer else OUT_OF_SCOPE_ANSWER), False

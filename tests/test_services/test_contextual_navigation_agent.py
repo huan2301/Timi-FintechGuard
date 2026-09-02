@@ -5,9 +5,7 @@ from src.app.services import contextual_navigation_agent
 
 
 def _response(payload: dict[str, object]) -> SimpleNamespace:
-    return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))]
-    )
+    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))])
 
 
 def test_navigation_agent_understands_natural_transfer_page_request(monkeypatch) -> None:
@@ -45,9 +43,7 @@ def test_navigation_agent_understands_natural_transfer_page_request(monkeypatch)
     )
     monkeypatch.setattr(contextual_navigation_agent, "OpenAI", FakeOpenAI)
 
-    result = contextual_navigation_agent.understand_navigation_request(
-        "Mình muốn qua phần gửi tiền"
-    )
+    result = contextual_navigation_agent.understand_navigation_request("Mình muốn qua phần gửi tiền")
 
     assert result is not None
     assert result.route == "/transfer"
@@ -59,11 +55,7 @@ def test_navigation_agent_rejects_model_route_outside_allowlist(monkeypatch) -> 
     class FakeOpenAI:
         def __init__(self, **_kwargs) -> None:
             self.chat = SimpleNamespace(
-                completions=SimpleNamespace(
-                    create=lambda **_kwargs: _response(
-                        {"route": "https://unsafe.example"}
-                    )
-                )
+                completions=SimpleNamespace(create=lambda **_kwargs: _response({"route": "https://unsafe.example"}))
             )
 
     monkeypatch.setattr(
@@ -90,9 +82,7 @@ def test_navigation_agent_accepts_public_help_route_from_allowlist(monkeypatch) 
     class FakeOpenAI:
         def __init__(self, **_kwargs) -> None:
             self.chat = SimpleNamespace(
-                completions=SimpleNamespace(
-                    create=lambda **_kwargs: _response({"route": "/help"})
-                )
+                completions=SimpleNamespace(create=lambda **_kwargs: _response({"route": "/help"}))
             )
 
     monkeypatch.setattr(
@@ -112,9 +102,7 @@ def test_navigation_agent_accepts_public_help_route_from_allowlist(monkeypatch) 
     )
     monkeypatch.setattr(contextual_navigation_agent, "OpenAI", FakeOpenAI)
 
-    result = contextual_navigation_agent.understand_navigation_request(
-        "Mình muốn tìm nơi được hỗ trợ"
-    )
+    result = contextual_navigation_agent.understand_navigation_request("Mình muốn tìm nơi được hỗ trợ")
 
     assert result is not None
     assert result.route == "/help"

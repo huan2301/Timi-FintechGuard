@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowRight, Phone, ShieldCheck, X } from "lucide-react";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 export default function GooglePhoneModal({
   email,
@@ -28,8 +29,8 @@ export default function GooglePhoneModal({
     setError("");
     try {
       await onSubmit(phone);
-    } catch (requestError: any) {
-      setError(requestError.response?.data?.detail || "Không thể lưu số điện thoại. Hãy thử lại.");
+    } catch (requestError: unknown) {
+      setError(getApiErrorMessage(requestError, "Không thể lưu số điện thoại. Hãy thử lại."));
     }
   };
 

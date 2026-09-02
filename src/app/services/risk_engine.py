@@ -1,21 +1,23 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import func, Index
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from decimal import Decimal
-import re
-from ..models import Blacklist, ScamPattern, Transaction, TrustedRecipient
+
 import numpy as np
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from ..models import Blacklist, ScamPattern, Transaction, TrustedRecipient
+
 
 @dataclass
 class RiskResult:
-    ml_score: Optional[float]
+    ml_score: float | None
     rule_score: float
     final_score: float
     level: str  # low/medium/high/critical
     reason: str
-    matched_blacklist: List[Dict]
-    matched_patterns: List[Dict]
+    matched_blacklist: list[dict]
+    matched_patterns: list[dict]
+
 
 class RiskEngine:
     """
@@ -27,31 +29,16 @@ class RiskEngine:
     """
 
     # Nguong rui ro
-    THRESHOLDS = {
-        "low": 0.30,
-        "medium": 0.50,
-        "high": 0.75,
-        "critical": 0.90
-    }
+    THRESHOLDS = {"low": 0.30, "medium": 0.50, "high": 0.75, "critical": 0.90}
 
     # Trong so
-    WEIGHTS = {
-        "blacklist": 0.40,
-        "pattern": 0.30,
-        "ml": 0.20,
-        "behavior": 0.10
-    }
+    WEIGHTS = {"blacklist": 0.40, "pattern": 0.30, "ml": 0.20, "behavior": 0.10}
 
     def __init__(self, db: Session):
         self.db = db
 
     async def calculate_risk(
-        self,
-        user_id: str,
-        recipient_account: str,
-        recipient_bank: Optional[str],
-        amount: Decimal,
-        description: Optional[str]
+        self, user_id: str, recipient_account: str, recipient_bank: str | None, amount: Decimal, description: str | None
     ) -> RiskResult:
         """
         Tinh toan diem rui ro tong hop.
@@ -69,10 +56,7 @@ class RiskEngine:
 
         # 3. ML Heuristic (statistical analysis)
         ml_score = self._ml_heuristic_analysis(
-            user_id=user_id,
-            amount=amount,
-            recipient_account=recipient_account,
-            description=description
+            user_id=user_id, amount=amount, recipient_account=recipient_account, description=description
         )
 
         # 4. Behavioral analysis (lich su giao dich user)
@@ -83,10 +67,10 @@ class RiskEngine:
 
         # Tinh diem tong hop co trong so
         raw_score = (
-            blacklist_score * self.WEIGHTS["blacklist"] +
-            pattern_score * self.WEIGHTS["pattern"] +
-            (ml_score or 0) * self.WEIGHTS["ml"] +
-            behavior_score * self.WEIGHTS["behavior"]
+            blacklist_score * self.WEIGHTS["blacklist"]
+            + pattern_score * self.WEIGHTS["pattern"]
+            + (ml_score or 0) * self.WEIGHTS["ml"]
+            + behavior_score * self.WEIGHTS["behavior"]
         )
 
         # Ap dung trust factor (giam rui ro neu nguoi nhan tin cay)
@@ -97,8 +81,7 @@ class RiskEngine:
 
         # Tao ly do canh bao (co can cu, khong bia)
         reason = self._generate_reason(
-            level, blacklist_matches, pattern_matches,
-            ml_score, behavior_score, trust_factor
+            level, blacklist_matches, pattern_matches, ml_score, behavior_score, trust_factor
         )
 
         return RiskResult(
@@ -107,22 +90,24 @@ class RiskEngine:
             final_score=round(final_score, 3),
             level=level,
             reason=reason,
-            matched_blacklist=[{
-                "entity": m.entity_value,
-                "type": m.entity_type,
-                "bank": m.bank,  # ✅ Them bank vao response
-                "source": m.source,
-                "risk": float(m.risk_score),
-                "evidence": m.evidence
-            } for m in blacklist_matches],
-            matched_patterns=[{
-                "name": p.pattern_name,
-                "description": p.description,
-                "weight": float(p.risk_weight)
-            } for p in pattern_matches]
+            matched_blacklist=[
+                {
+                    "entity": m.entity_value,
+                    "type": m.entity_type,
+                    "bank": m.bank,  # ✅ Them bank vao response
+                    "source": m.source,
+                    "risk": float(m.risk_score),
+                    "evidence": m.evidence,
+                }
+                for m in blacklist_matches
+            ],
+            matched_patterns=[
+                {"name": p.pattern_name, "description": p.description, "weight": float(p.risk_weight)}
+                for p in pattern_matches
+            ],
         )
 
-    def _check_blacklist(self, account: str, bank: Optional[str]) -> List[Blacklist]:
+    def _check_blacklist(self, account: str, bank: str | None) -> list[Blacklist]:
         """
         ✅ Kiem tra STK + Ngan hang la dieu kien KIEN QUYET.
         Ten co the thay doi, KHONG dung de match.
@@ -133,20 +118,24 @@ class RiskEngine:
         if not account or not bank:
             return []
 
-        account_clean = str(account).replace(' ', '').strip()
+        account_clean = str(account).replace(" ", "").strip()
         bank_clean = str(bank).strip()
 
         # ✅ Dieu kien KIEN QUYET: STK chinh xac + Ngan hang chinh xac
-        matches = self.db.query(Blacklist).filter(
-            Blacklist.is_active == True,
-            Blacklist.entity_type == "account",
-            Blacklist.entity_value == account_clean,  # Match chinh xac STK
-            Blacklist.bank == bank_clean                # ✅ Match chinh xac ngân hàng (cot rieng)
-        ).all()
+        matches = (
+            self.db.query(Blacklist)
+            .filter(
+                Blacklist.is_active.is_(True),
+                Blacklist.entity_type == "account",
+                Blacklist.entity_value == account_clean,  # Match chinh xac STK
+                Blacklist.bank == bank_clean,  # ✅ Match chinh xac ngân hàng (cot rieng)
+            )
+            .all()
+        )
 
         return matches
 
-    def _calculate_blacklist_score(self, matches: List[Blacklist]) -> float:
+    def _calculate_blacklist_score(self, matches: list[Blacklist]) -> float:
         """Tinh diem rui ro tu blacklist matches"""
         if not matches:
             return 0.0
@@ -160,13 +149,13 @@ class RiskEngine:
 
         return min(1.0, max_score * multiplier)
 
-    def _check_patterns(self, description: Optional[str], account: str) -> List[ScamPattern]:
+    def _check_patterns(self, description: str | None, account: str) -> list[ScamPattern]:
         """Kiem tra mo ta giao dich khop voi pattern lua dao nao"""
         if not description:
             return []
 
         desc_lower = description.lower()
-        patterns = self.db.query(ScamPattern).filter(ScamPattern.is_active == True).all()
+        patterns = self.db.query(ScamPattern).filter(ScamPattern.is_active.is_(True)).all()
 
         matched = []
         for pattern in patterns:
@@ -181,7 +170,7 @@ class RiskEngine:
 
         return matched
 
-    def _calculate_pattern_score(self, matches: List[ScamPattern]) -> float:
+    def _calculate_pattern_score(self, matches: list[ScamPattern]) -> float:
         """Tinh diem tu pattern matches"""
         if not matches:
             return 0.0
@@ -190,21 +179,20 @@ class RiskEngine:
         return min(1.0, total_weight)
 
     def _ml_heuristic_analysis(
-        self,
-        user_id: str,
-        amount: Decimal,
-        recipient_account: str,
-        description: Optional[str]
-    ) -> Optional[float]:
+        self, user_id: str, amount: Decimal, recipient_account: str, description: str | None
+    ) -> float | None:
         """
         Phan tich heuristic dua tren du lieu lich su.
         Khong dung LLM — dung thong ke va rule.
         """
         # Lay lich su giao dich cua user
-        history = self.db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            Transaction.status == "completed"
-        ).order_by(Transaction.created_at.desc()).limit(50).all()
+        history = (
+            self.db.query(Transaction)
+            .filter(Transaction.user_id == user_id, Transaction.status == "completed")
+            .order_by(Transaction.created_at.desc())
+            .limit(50)
+            .all()
+        )
 
         if not history:
             # User moi -> rui ro trung binh
@@ -253,11 +241,15 @@ class RiskEngine:
     def _behavioral_analysis(self, user_id: str, amount: Decimal, recipient_account: str) -> float:
         """Phan tich hanh vi nguoi dung"""
         # Dem so giao dich bi huy/canh bao gan day
-        recent_flagged = self.db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            Transaction.created_at >= func.now() - func.interval('7 days'),
-            Transaction.risk_level.in_(["high", "critical"])
-        ).count()
+        recent_flagged = (
+            self.db.query(Transaction)
+            .filter(
+                Transaction.user_id == user_id,
+                Transaction.created_at >= func.now() - func.interval("7 days"),
+                Transaction.risk_level.in_(["high", "critical"]),
+            )
+            .count()
+        )
 
         if recent_flagged >= 3:
             return 0.70  # User co nhieu giao dich rui ro gan day
@@ -266,16 +258,10 @@ class RiskEngine:
 
         return 0.05
 
-    def _check_trusted_recipient(
-        self,
-        user_id: str,
-        account: str,
-        bank: Optional[str]
-    ) -> float:
+    def _check_trusted_recipient(self, user_id: str, account: str, bank: str | None) -> float:
         """Kiem tra nguoi nhan co trong danh sach tin cay khong"""
         query = self.db.query(TrustedRecipient).filter(
-            TrustedRecipient.user_id == user_id,
-            TrustedRecipient.account_number == account
+            TrustedRecipient.user_id == user_id, TrustedRecipient.account_number == account
         )
 
         if bank:
@@ -302,11 +288,11 @@ class RiskEngine:
     def _generate_reason(
         self,
         level: str,
-        blacklist_matches: List[Blacklist],
-        pattern_matches: List[ScamPattern],
-        ml_score: Optional[float],
+        blacklist_matches: list[Blacklist],
+        pattern_matches: list[ScamPattern],
+        ml_score: float | None,
         behavior_score: float,
-        trust_factor: float
+        trust_factor: float,
     ) -> str:
         """
         Tao ly do canh bao DUA TREN DU LIEU THUC.
@@ -318,10 +304,9 @@ class RiskEngine:
             # ✅ Hien thi STK + Ngan hang + Ten (ten chi de tham khao)
             for m in blacklist_matches[:3]:
                 evidence = m.evidence or {}
-                ten = evidence.get('ten', 'Khong ro')
+                ten = evidence.get("ten", "Khong ro")
                 reasons.append(
-                    f"Blacklist: {m.entity_value} | {m.bank} | {ten} "
-                    f"(risk: {float(m.risk_score)*100:.0f}%)"
+                    f"Blacklist: {m.entity_value} | {m.bank} | {ten} (risk: {float(m.risk_score) * 100:.0f}%)"
                 )
 
         if pattern_matches:

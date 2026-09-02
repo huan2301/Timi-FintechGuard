@@ -14,6 +14,11 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+# The realtime agent needs enough context to recognize a scam pattern, but it
+# should never receive an unbounded call history. Twelve short speech turns is
+# roughly the latest 15–30 seconds in the normal browser capture cadence.
+MAX_ROLLING_GUARDIAN_SEGMENTS = 12
+
 
 @dataclass(frozen=True)
 class GuardianSignal:
@@ -39,13 +44,13 @@ class GuardianConversationState:
 
     def append(self, speaker: str, text: str) -> None:
         self.segments.append((speaker, text))
+        if len(self.segments) > MAX_ROLLING_GUARDIAN_SEGMENTS:
+            del self.segments[:-MAX_ROLLING_GUARDIAN_SEGMENTS]
 
 
 def _normalize(value: str) -> str:
     decomposed = unicodedata.normalize("NFD", value.lower())
-    return "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    ).replace("đ", "d")
+    return "".join(character for character in decomposed if not unicodedata.combining(character)).replace("đ", "d")
 
 
 def _contains(text: str, phrases: Iterable[str]) -> str | None:
@@ -95,8 +100,7 @@ def _has_bank_impersonation(text: str) -> str | None:
     patterns = (
         r"(toi la|day la|goi tu|nhan danh).{0,45}"
         r"(nhan vien ngan hang|can bo ngan hang|bo phan bao mat|trung tam ho tro)",
-        r"(nhan vien ngan hang|can bo ngan hang|bo phan bao mat).{0,45}"
-        r"(yeu cau|de nghi|thong bao|goi cho)",
+        r"(nhan vien ngan hang|can bo ngan hang|bo phan bao mat).{0,45}" r"(yeu cau|de nghi|thong bao|goi cho)",
     )
     for pattern in patterns:
         match = re.search(pattern, text)
@@ -123,8 +127,7 @@ def _has_account_lock_threat(text: str) -> str | None:
     patterns = (
         r"tai khoan.{0,45}(bi khoa|se bi khoa|khoa ngay|bi tam khoa|bi phong toa|"
         r"bi vo hieu hoa|dong bang|mat quyen truy cap)",
-        r"(bi khoa|se bi khoa|khoa ngay|bi tam khoa|bi phong toa|bi vo hieu hoa).{0,45}"
-        r"tai khoan",
+        r"(bi khoa|se bi khoa|khoa ngay|bi tam khoa|bi phong toa|bi vo hieu hoa).{0,45}" r"tai khoan",
         r"(khoa|phong toa|vo hieu hoa|dong bang).{0,30}(ngay lap tuc|trong hom nay|neu khong)",
     )
     for pattern in patterns:
@@ -157,8 +160,7 @@ def _has_credential_social_engineering(text: str) -> str | None:
     for credential in credentials:
         for action in actions:
             match = re.search(
-                rf"{action}.{{0,35}}{re.escape(credential)}|"
-                rf"{re.escape(credential)}.{{0,35}}{action}",
+                rf"{action}.{{0,35}}{re.escape(credential)}|" rf"{re.escape(credential)}.{{0,35}}{action}",
                 text,
             )
             if match:
@@ -180,8 +182,7 @@ def _has_otp_request(text: str) -> str | None:
     for credential in credentials:
         for action in actions:
             match = re.search(
-                rf"{action}.{{0,30}}{re.escape(credential)}|"
-                rf"{re.escape(credential)}.{{0,30}}{action}",
+                rf"{action}.{{0,30}}{re.escape(credential)}|" rf"{re.escape(credential)}.{{0,30}}{action}",
                 text,
             )
             if match:
@@ -404,9 +405,7 @@ def analyze_guardian_state(state: GuardianConversationState) -> GuardianRiskResu
         if matching:
             base_score += max(signal.weight for signal in matching)
             counted.update(signal.signal_type for signal in matching)
-    base_score += sum(
-        signal.weight for signal in signals if signal.signal_type not in counted
-    )
+    base_score += sum(signal.weight for signal in signals if signal.signal_type not in counted)
     score = min(100, base_score + bonus)
     if score >= 80:
         level = "critical"

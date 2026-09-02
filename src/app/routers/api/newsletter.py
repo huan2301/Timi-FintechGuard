@@ -37,9 +37,7 @@ def subscribe_to_newsletter(
             detail="Email không hợp lệ.",
         )
 
-    existing = db.scalar(
-        select(NewsletterSubscriber).where(NewsletterSubscriber.email == email)
-    )
+    existing = db.scalar(select(NewsletterSubscriber).where(NewsletterSubscriber.email == email))
     if existing:
         return NewsletterSubscribeResponse(message="Email đã được đăng ký nhận tin.")
 

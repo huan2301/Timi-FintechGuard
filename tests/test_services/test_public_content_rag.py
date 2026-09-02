@@ -112,9 +112,7 @@ def test_reindex_falls_back_to_lexical_chunks_when_embeddings_fail(monkeypatch) 
     chunk = db.query(ContentChunk).one()
     assert chunk.embedding is None
     assert chunk.embedding_model is None
-    assert "bảo vệ dữ liệu" in public_content_rag.retrieve_public_context(
-        db, "dữ liệu cá nhân"
-    )[0].text
+    assert "bảo vệ dữ liệu" in public_content_rag.retrieve_public_context(db, "dữ liệu cá nhân")[0].text
 
 
 def test_chat_prompt_receives_public_context_without_changing_action_boundary(monkeypatch) -> None:

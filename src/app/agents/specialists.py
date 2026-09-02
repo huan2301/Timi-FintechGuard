@@ -199,7 +199,5 @@ class CallGuardianAgent:
         if isinstance(payload, GuardianRiskTask):
             return analyze_with_guardian_agent(payload.state, payload.latest_text)
         if isinstance(payload, GuardianAudioTask):
-            return GuardianTranscriptionResult(
-                text=transcribe_guardian_audio(payload.audio_bytes, payload.mime_type)
-            )
+            return GuardianTranscriptionResult(text=transcribe_guardian_audio(payload.audio_bytes, payload.mime_type))
         raise TypeError("Call Guardian Agent nhận sai loại tác vụ")

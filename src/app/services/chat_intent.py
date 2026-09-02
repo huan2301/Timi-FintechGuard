@@ -52,9 +52,7 @@ class ChatIntentClassification:
 
 
 _JSON_FENCE_PATTERN = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
-_NAVIGATION_ACTION_PATTERN = re.compile(
-    r"\b(?:mo|vao|den|sang|ve|qua|dua)\b|\b(?:trang|man hinh|muc|phan)\b"
-)
+_NAVIGATION_ACTION_PATTERN = re.compile(r"\b(?:mo|vao|den|sang|ve|qua|dua)\b|\b(?:trang|man hinh|muc|phan)\b")
 _ACCOUNT_PATTERN = re.compile(r"(?<!\d)(?:\d[ .-]?){6,19}\d(?!\d)")
 
 _SYSTEM_PROMPT = """
@@ -119,18 +117,13 @@ def _local_classification(
 
 def _normalize(value: str) -> str:
     decomposed = unicodedata.normalize("NFD", value.lower())
-    return "".join(character for character in decomposed if not unicodedata.combining(character)).replace(
-        "đ", "d"
-    )
+    return "".join(character for character in decomposed if not unicodedata.combining(character)).replace("đ", "d")
 
 
 def _history_excerpt(history: list[AssistantChatTurn]) -> str:
     if not history:
         return "(không có lịch sử gần đây)"
-    return "\n".join(
-        f"{turn.role}: {_redact_for_classifier(turn.content.strip())[:280]}"
-        for turn in history[-4:]
-    )
+    return "\n".join(f"{turn.role}: {_redact_for_classifier(turn.content.strip())[:280]}" for turn in history[-4:])
 
 
 def _redact_for_classifier(value: str) -> str:
@@ -184,9 +177,7 @@ def _model_classification(
             return None
         except Exception as exc:
             if is_rate_limit_error(exc) and index < len(provider.api_keys) - 1:
-                logger.warning(
-                    "Chat Support intent classifier is rate limited; trying a configured backup key"
-                )
+                logger.warning("Chat Support intent classifier is rate limited; trying a configured backup key")
                 continue
             logger.info("Chat Support intent classifier unavailable (%s)", type(exc).__name__)
             return None

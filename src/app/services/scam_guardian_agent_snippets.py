@@ -6,11 +6,7 @@ These are not imported at runtime; they document the exact functions to merge.
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import re
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -73,6 +69,7 @@ def conversation_payload_v1(state: Any, latest_text: str) -> dict[str, Any]:
 # 2) decision_confidence in normalize (add near end of _normalize_decision_payload)
 # ---------------------------------------------------------------------------
 
+
 def attach_confidence(payload: dict[str, Any], first_fn: Any) -> dict[str, Any]:
     raw_conf = first_fn("decision_confidence", "confidence", "decisionConfidence")
     try:
@@ -86,6 +83,7 @@ def attach_confidence(payload: dict[str, Any], first_fn: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # 3) Retry wrapper skeleton
 # ---------------------------------------------------------------------------
+
 
 def call_agent_with_json_retry(
     *,

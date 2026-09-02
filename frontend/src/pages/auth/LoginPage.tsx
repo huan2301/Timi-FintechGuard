@@ -3,12 +3,20 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Shield, Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, Sparkles, Globe, Zap } from "lucide-react";
 import { authApi } from "@/services/api/auth";
-import type { GooglePhoneCompletionResponse, TokenResponse } from "@/services/api/auth";
+import type {
+  DeviceVerificationRequiredResponse,
+  GooglePhoneCompletionResponse,
+  LoginResponse,
+  TokenResponse,
+} from "@/services/api/auth";
 import { useAuthStore } from "@/stores/authStore";
+import DeviceLoginOtpModal from "@/components/auth/DeviceLoginOtpModal";
 import GooglePhoneModal from "@/components/auth/GooglePhoneModal";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import { hasGoogleSignInConfig } from "@/components/auth/googleIdentityConfig";
 import TimiLogo from "@/components/brand/TimiLogo";
+import { getApiErrorMessage } from "@/utils/apiError";
+import { getRequiredLoginDeviceId } from "@/utils/riskTelemetry";
 
 const floatingIcons = [
   { Icon: Shield, top: "10%", left: "8%", delay: "0s", size: 28 },
@@ -38,25 +46,43 @@ export default function LoginPage() {
   ), [returnTo]);
   const [form, setForm] = useState({ email: registrationEmail ?? "", password: "" });
   const [showPass, setShowPass] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>((): Record<string, string> => (
+    new URLSearchParams(location.search).get("reason") === "session-ended"
+      ? {
+          general: "Phiên đăng nhập không còn hiệu lực hoặc đã hết hạn. Vui lòng đăng nhập lại.",
+        }
+      : {}
+  ));
   const [rememberLogin, setRememberLogin] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [googleCompletion, setGoogleCompletion] = useState<GooglePhoneCompletionResponse | null>(null);
+  const [deviceVerification, setDeviceVerification] = useState<DeviceVerificationRequiredResponse | null>(null);
   const rememberLoginRef = useRef<HTMLInputElement>(null);
 
-  const finishGoogleLogin = useCallback((data: TokenResponse) => {
-    setAuth(data.access_token, data.user, rememberLogin);
+  const finishAuthenticatedLogin = useCallback((data: TokenResponse) => {
+    setAuth(
+      data.access_token,
+      data.user,
+      rememberLogin,
+      data.location_confirmation_required,
+    );
     navigate(destinationAfterLogin(data.user.role), { replace: true });
   }, [destinationAfterLogin, navigate, rememberLogin, setAuth]);
 
+  const handleLoginResponse = useCallback((data: LoginResponse) => {
+    if ("device_verification_required" in data) {
+      setGoogleCompletion(null);
+      setDeviceVerification(data);
+      return;
+    }
+    finishAuthenticatedLogin(data);
+  }, [finishAuthenticatedLogin]);
+
   const loginMutation = useMutation({
     mutationFn: authApi.login,
-    onSuccess: async (data) => {
-      setAuth(data.access_token, data.user, rememberLogin);
-      navigate(destinationAfterLogin(data.user.role), { replace: true });
-    },
-    onError: (err: any) => {
-      setErrors({ password: err.response?.data?.detail || "Sai email hoặc mật khẩu" });
+    onSuccess: handleLoginResponse,
+    onError: (err: unknown) => {
+      setErrors({ password: getApiErrorMessage(err, "Sai email hoặc mật khẩu") });
     },
   });
 
@@ -67,16 +93,30 @@ export default function LoginPage() {
         setGoogleCompletion(data);
         return;
       }
-      finishGoogleLogin(data);
+      handleLoginResponse(data);
     },
-    onError: (err: any) => {
-      setErrors({ general: err.response?.data?.detail || "Không thể đăng nhập bằng Google" });
+    onError: (err: unknown) => {
+      setErrors({ general: getApiErrorMessage(err, "Không thể đăng nhập bằng Google") });
     },
   });
 
   const completeGooglePhoneMutation = useMutation({
     mutationFn: authApi.completeGooglePhone,
-    onSuccess: finishGoogleLogin,
+    onSuccess: handleLoginResponse,
+  });
+
+  const verifyDeviceMutation = useMutation({
+    mutationFn: ({ otp }: { otp: string }) => {
+      if (!deviceVerification) throw new Error("Thiếu phiên xác minh thiết bị");
+      return authApi.verifyLoginDevice({
+        verification_token: deviceVerification.verification_token,
+        otp,
+      });
+    },
+    onSuccess: (data) => {
+      setDeviceVerification(null);
+      finishAuthenticatedLogin(data);
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -89,12 +129,28 @@ export default function LoginPage() {
       setErrors(nextErrors);
       return;
     }
-    loginMutation.mutate({ ...form, remember_me: rememberLogin });
+    try {
+      loginMutation.mutate({
+        ...form,
+        device_id: getRequiredLoginDeviceId(),
+        remember_me: rememberLogin,
+      });
+    } catch (error: unknown) {
+      setErrors({ general: error instanceof Error ? error.message : "Không thể nhận diện thiết bị đăng nhập" });
+    }
   };
 
   const handleGoogleCredential = useCallback((credential: string) => {
     setErrors({});
-    googleLoginMutation.mutate({ credential, remember_me: rememberLogin });
+    try {
+      googleLoginMutation.mutate({
+        credential,
+        device_id: getRequiredLoginDeviceId(),
+        remember_me: rememberLogin,
+      });
+    } catch (error: unknown) {
+      setErrors({ general: error instanceof Error ? error.message : "Không thể nhận diện thiết bị đăng nhập" });
+    }
   }, [googleLoginMutation, rememberLogin]);
 
   const handleGoogleLoadError = useCallback((message: string) => {
@@ -159,35 +215,33 @@ export default function LoginPage() {
                 Bảo vệ tài chính<br />với trí tuệ nhân tạo
               </h2>
               <p className="text-slate-200 text-sm leading-relaxed max-w-sm">
-                Hệ thống AI phân tích real-time, chặn giao dịch rủi ro trước khi xảy ra. An toàn tuyệt đối 24/7.
+                Hệ thống demo phân tích tín hiệu rủi ro và yêu cầu bạn xác nhận trước khi hoàn tất giao dịch.
               </p>
             </div>
           </div>
 
-          {/* Floating stat card */}
+          {/* Floating security card */}
           <div className="absolute -top-6 -right-6 bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-5 animate-float-slow">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center">
                 <Shield className="w-6 h-6 text-emerald-600" />
               </div>
               <div>
-                <p className="text-xs text-slate-400 font-medium">Giao dịch an toàn</p>
-                <p className="text-xl font-bold text-slate-900">99.9%</p>
+                <p className="text-xs text-slate-400 font-medium">Đăng nhập thiết bị mới</p>
+                <p className="text-base font-bold text-slate-900">OTP + vị trí</p>
               </div>
             </div>
           </div>
 
-          {/* Floating users card */}
+          {/* Floating session card */}
           <div className="absolute -bottom-4 -left-4 bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-4 animate-float-slow" style={{ animationDelay: "1.5s" }}>
             <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=face" className="w-8 h-8 rounded-full border-2 border-white object-cover" alt="" />
-                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face" className="w-8 h-8 rounded-full border-2 border-white object-cover" alt="" />
-                <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face" className="w-8 h-8 rounded-full border-2 border-white object-cover" alt="" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Lock className="h-5 w-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm font-bold text-slate-900">2M+ Users</p>
-                <p className="text-xs text-slate-400">Trust Timi</p>
+                <p className="text-sm font-bold text-slate-900">Một phiên đăng nhập</p>
+                <p className="text-xs text-slate-400">Thiết bị cũ tự hết hiệu lực</p>
               </div>
             </div>
           </div>
@@ -357,14 +411,14 @@ export default function LoginPage() {
             <p className="text-center text-sm text-slate-500">
               Chưa có tài khoản?{" "}
               <Link to="/register" className="text-blue-600 font-bold hover:text-blue-700 transition-colors">
-                Tạo tài khoản miễn phí
+                Tạo tài khoản thử nghiệm
               </Link>
             </p>
           </div>
 
           {/* Footer */}
           <p className="login-footer text-center text-xs text-slate-400 mt-8 lg:mt-4">
-            © 2026 Timi. Bảo vệ bạn mọi lúc.
+            © 2026 Timi. Bản demo AI Financial Guardian.
           </p>
         </div>
       </div>
@@ -377,6 +431,16 @@ export default function LoginPage() {
           isSaving={completeGooglePhoneMutation.isPending}
           onCancel={() => setGoogleCompletion(null)}
           onSubmit={submitGooglePhone}
+        />
+      )}
+
+      {deviceVerification && (
+        <DeviceLoginOtpModal
+          email={deviceVerification.email}
+          expiresInSeconds={deviceVerification.expires_in_seconds}
+          isSaving={verifyDeviceMutation.isPending}
+          onCancel={() => setDeviceVerification(null)}
+          onSubmit={(otp) => verifyDeviceMutation.mutateAsync({ otp }).then(() => undefined)}
         />
       )}
 

@@ -19,7 +19,6 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 API_URL = os.getenv("EVAL_API_URL", "http://localhost:8000/api").rstrip("/")
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "eval" / "results"
 
@@ -27,10 +26,23 @@ RESULTS_DIR = Path(__file__).resolve().parents[1] / "eval" / "results"
 CASES = {
     "case-01-safe": {"account_env": "EVAL_RECIPIENT_1", "amount": 50_000, "note": "Thanh toan test"},
     "case-02-unusual-amount": {"account_env": "EVAL_RECIPIENT_2", "amount": 10_000_000, "note": "Thanh toan test"},
-    "case-03-scam-note": {"account_env": "EVAL_RECIPIENT_3", "amount": 500_000, "note": "phi mo khoa chuyen gap giu bi mat"},
-    "case-04-blacklist": {"account_env": "EVAL_BLACKLIST_ACCOUNT", "bank_env": "EVAL_BLACKLIST_BANK_CODE", "amount": 500_000, "note": "Thanh toan test"},
+    "case-03-scam-note": {
+        "account_env": "EVAL_RECIPIENT_3",
+        "amount": 500_000,
+        "note": "phi mo khoa chuyen gap giu bi mat",
+    },
+    "case-04-blacklist": {
+        "account_env": "EVAL_BLACKLIST_ACCOUNT",
+        "bank_env": "EVAL_BLACKLIST_BANK_CODE",
+        "amount": 500_000,
+        "note": "Thanh toan test",
+    },
     "case-05-trusted-recipient": {"account_env": "EVAL_TRUSTED_ACCOUNT", "amount": 500_000, "note": "Thanh toan test"},
-    "case-06-high-value-face": {"account_env": "EVAL_RECIPIENT_1", "amount": 10_000_001, "note": "Chuyen khoan gia tri cao"},
+    "case-06-high-value-face": {
+        "account_env": "EVAL_RECIPIENT_1",
+        "amount": 10_000_001,
+        "note": "Chuyen khoan gia tri cao",
+    },
 }
 
 

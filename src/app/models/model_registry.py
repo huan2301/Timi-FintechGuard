@@ -16,13 +16,9 @@ if TYPE_CHECKING:
 
 class ModelVersion(Base, TimestampMixin):
     __tablename__ = "model_versions"
-    __table_args__ = (
-        UniqueConstraint("model_name", "version", name="uq_model_versions_name_version"),
-    )
+    __table_args__ = (UniqueConstraint("model_name", "version", name="uq_model_versions_name_version"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     version: Mapped[str] = mapped_column(String(100), nullable=False)
     model_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -35,9 +31,7 @@ class ModelVersion(Base, TimestampMixin):
 class IntelligenceSource(Base, TimestampMixin):
     __tablename__ = "intelligence_sources"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -45,4 +39,4 @@ class IntelligenceSource(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    scam_patterns: Mapped[list["ScamPattern"]] = relationship(back_populates="source")
+    scam_patterns: Mapped[list[ScamPattern]] = relationship(back_populates="source")

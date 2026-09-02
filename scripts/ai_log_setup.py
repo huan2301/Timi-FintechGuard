@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Install AI logging support for Antigravity IDE and git push submission."""
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from textwrap import dedent
-from typing import Dict
 
 
-def load_env(env_path: Path) -> Dict[str, str]:
-    values: Dict[str, str] = {}
+def load_env(env_path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
     if not env_path.exists():
         return values
     for line in env_path.read_text(encoding="utf-8").splitlines():
@@ -68,7 +67,9 @@ def main() -> int:
     if not env:
         print("[ai-log] Warning: .env file not found or empty. Create .env from .env.example and set AI_LOG_SERVER.")
     if not env.get("AI_LOG_SERVER"):
-        print("[ai-log] Warning: AI_LOG_SERVER is not set in .env. The submit step will be skipped until this is configured.")
+        print(
+            "[ai-log] Warning: AI_LOG_SERVER is not set in .env. The submit step will be skipped until this is configured."
+        )
     log_dir = repo_root / env.get("AI_LOG_DIR", ".ai-log")
     ensure_dir(log_dir)
     keep_path = log_dir / ".gitkeep"
@@ -77,10 +78,11 @@ def main() -> int:
     print(f"[ai-log] Ensured AI log directory exists: {log_dir}")
     cleanup_copilot_hook_config(repo_root)
     write_pre_push_hook(repo_root)
-    print("[ai-log] Antigravity AI log setup complete. Use 'git push' to sweep and submit logs, or run 'python scripts/submit_log.py' manually.")
+    print(
+        "[ai-log] Antigravity AI log setup complete. Use 'git push' to sweep and submit logs, or run 'python scripts/submit_log.py' manually."
+    )
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

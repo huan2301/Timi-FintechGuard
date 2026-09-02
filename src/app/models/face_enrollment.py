@@ -17,7 +17,9 @@ class FaceEnrollment(Base, TimestampMixin):
     __tablename__ = "face_enrollments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
     reference_image_url: Mapped[str] = mapped_column(String(500), nullable=False)
     reference_embedding: Mapped[list[float]] = mapped_column(JSONB, nullable=False)
     model_id: Mapped[str] = mapped_column(String(255), nullable=False)

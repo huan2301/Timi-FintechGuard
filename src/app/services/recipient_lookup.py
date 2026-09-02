@@ -26,11 +26,11 @@ class RecipientLookupResult:
     needs_caution: bool = False
 
 
-class RecipientLookupNotFound(Exception):
+class RecipientLookupNotFound(Exception):  # noqa: N818 - public domain exception name
     """Raised when no internal record contains the requested account name."""
 
 
-class RecipientLookupInvalid(Exception):
+class RecipientLookupInvalid(Exception):  # noqa: N818 - public domain exception name
     """Raised when an otherwise valid lookup is not a permitted transfer target."""
 
 
@@ -43,9 +43,7 @@ def _name_from_blacklist(entry: Blacklist) -> str | None:
     return None
 
 
-def _active_account_blacklist_entry(
-    db: Session, *, account_number: str, bank_code: str
-) -> Blacklist | None:
+def _active_account_blacklist_entry(db: Session, *, account_number: str, bank_code: str) -> Blacklist | None:
     """Return only an exact active account-plus-bank blacklist match."""
     entries = db.scalars(
         select(Blacklist).where(
@@ -55,18 +53,12 @@ def _active_account_blacklist_entry(
         )
     ).all()
     return next(
-        (
-            entry
-            for entry in entries
-            if normalize_bank_name(entry.bank) == bank_code
-        ),
+        (entry for entry in entries if normalize_bank_name(entry.bank) == bank_code),
         None,
     )
 
 
-def lookup_recipient(
-    db: Session, *, user_id: object, account_number: str, bank_code: str
-) -> RecipientLookupResult:
+def lookup_recipient(db: Session, *, user_id: object, account_number: str, bank_code: str) -> RecipientLookupResult:
     """Find an exact account-plus-bank match without calling an external API."""
     if bank_code == TIMI_BANK_CODE:
         timi_user = find_active_timi_recipient(db, account_number)

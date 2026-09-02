@@ -290,10 +290,10 @@ eval/
 | File | Nội dung |
 |------|----------|
 | `docs/PHASE1_IMPLEMENTATION.md` | Phase 1 đã đạt 100% metric |
-| `ROADMAP.md` | Lịch 6 tuần (Phase 2 nhẹ tuần 6) |
+| Root `README.md` | Tổng quan phase và kết quả dự án |
 | `prompts/README.md` | Versioning — thêm `manager_v0.1` khi có |
 | `eval/results/report.md` | Baseline Guardian |
-| `ARCHITECTURE.md` | Cập nhật sơ đồ khi wire Manager |
+| `docs/architecture_diagram.md` | Cập nhật sơ đồ khi wire Manager |
 
 ---
 

@@ -152,9 +152,7 @@ NAVIGATION_CASES = [
 
 
 @pytest.mark.parametrize(("message", "expected_route"), NAVIGATION_CASES)
-def test_navigation_context_uses_only_the_expected_allowlisted_route(
-    message: str, expected_route: str
-) -> None:
+def test_navigation_context_uses_only_the_expected_allowlisted_route(message: str, expected_route: str) -> None:
     result = route_task(message, AssistantTaskState())
 
     assert result.handled
@@ -171,9 +169,7 @@ FULL_TRANSFER_CASES = [
 ]
 
 
-@pytest.mark.parametrize(
-    ("message", "account", "bank", "amount"), FULL_TRANSFER_CASES
-)
+@pytest.mark.parametrize(("message", "account", "bank", "amount"), FULL_TRANSFER_CASES)
 def test_full_transfer_context_only_opens_review_with_all_three_slots(
     message: str, account: str, bank: str, amount: int
 ) -> None:
@@ -268,16 +264,16 @@ def test_sensitive_credential_context_never_reaches_a_model(
         ("Vietcombank", "bao nhiêu tiền"),
     ],
 )
-def test_transfer_context_asks_for_exactly_the_next_missing_slot(
-    message: str, expected_fragment: str
-) -> None:
+def test_transfer_context_asks_for_exactly_the_next_missing_slot(message: str, expected_fragment: str) -> None:
     state = AssistantTaskState()
     if message != "Tôi muốn chuyển tiền":
         state = route_task("Tôi muốn chuyển tiền", state).task_state
     if message == "Vietcombank":
         state = route_task("STK: 1234567890", state).task_state
 
-    result = route_task(message, state) if message != "Tôi muốn chuyển tiền" else route_task(message, AssistantTaskState())
+    result = (
+        route_task(message, state) if message != "Tôi muốn chuyển tiền" else route_task(message, AssistantTaskState())
+    )
 
     assert result.handled
     assert expected_fragment in (result.answer or "").lower()

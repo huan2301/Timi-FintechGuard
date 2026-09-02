@@ -54,6 +54,10 @@ class AssistantRiskContext(BaseModel):
     risk_score: float = Field(default=0, ge=0, le=1)
     signals: list[str] = Field(default_factory=list, max_length=8)
     warning_message: str | None = Field(default=None, max_length=500)
+    # Server-reloaded metadata from a Guardian alert.  It never contains
+    # transcript or raw call evidence, and client values are not trusted.
+    guardian_alerted_at: datetime | None = None
+    guardian_alert_age_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
 
 
 class AssistantUiAction(BaseModel):
@@ -64,26 +68,29 @@ class AssistantUiAction(BaseModel):
     ]
     transfer: AssistantTransferDraft | None = None
     voice_monitoring_enabled: bool | None = None
-    route: Literal[
-        "/dashboard",
-        "/transfer",
-        "/qr?mode=scan",
-        "/qr?mode=create",
-        "/history",
-        "/me",
-        "/me?open=password",
-        "/me?open=pin",
-        "/setup-pin",
-        "/setup-face",
-        "/terms",
-        "/privacy",
-        "/mission",
-        "/help",
-        "/services",
-        "/download",
-        "/demo",
-        "/cookies",
-    ] | None = None
+    route: (
+        Literal[
+            "/dashboard",
+            "/transfer",
+            "/qr?mode=scan",
+            "/qr?mode=create",
+            "/history",
+            "/me",
+            "/me?open=password",
+            "/me?open=pin",
+            "/setup-pin",
+            "/setup-face",
+            "/terms",
+            "/privacy",
+            "/mission",
+            "/help",
+            "/services",
+            "/download",
+            "/demo",
+            "/cookies",
+        ]
+        | None
+    ) = None
 
 
 class AssistantChatRequest(BaseModel):

@@ -539,7 +539,7 @@ export default function QrPaymentPage() {
                         Timi Security
                       </p>
                       <p className="text-xs text-violet-700 mt-0.5 leading-relaxed">
-                        Chúng tôi sẽ kiểm tra mã QR để đảm bảo an toàn cho bạn.
+                        Timi sẽ kiểm tra định dạng và các tín hiệu rủi ro đã hỗ trợ trước khi bạn tiếp tục.
                       </p>
                     </div>
                   </div>

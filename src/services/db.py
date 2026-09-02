@@ -7,13 +7,12 @@ Alembic quản lý migration — chạy `alembic upgrade head` sau khi thêm mod
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator
 
 from sqlalchemy import (
     DateTime,
     Float,
-    ForeignKey,
     Integer,
     String,
     Text,
@@ -24,8 +23,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from src.config import get_settings
 
-
 # ── Engine & Session ────────────────────────────────────────────────────────
+
 
 def _make_engine():
     settings = get_settings()
@@ -63,11 +62,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 # ── Base ────────────────────────────────────────────────────────────────────
 
+
 class Base(DeclarativeBase):
     pass
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
+
 
 class Transaction(Base):
     """Lưu lịch sử giao dịch được phân tích.
@@ -88,9 +89,7 @@ class Transaction(Base):
     warning_level: Mapped[str] = mapped_column(String(20), default="safe")
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
     explanation: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AuditLog(Base):
@@ -110,9 +109,7 @@ class AuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Metadata đã mask — không chứa PII thô
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     def set_metadata(self, data: dict) -> None:
         """Ghi metadata (phải đã mask PDPA trước khi gọi hàm này)."""

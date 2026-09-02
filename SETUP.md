@@ -120,28 +120,142 @@ Không dùng `docker compose down -v` nếu chưa backup dữ liệu volume.
 
 ## 5. Chạy không dùng Docker
 
-Backend:
+Các bước dưới đây chạy backend và frontend trực tiếp trên máy. PostgreSQL có
+thể chạy local hoặc dùng Neon; thông tin kết nối được khai báo trong `.env`.
+
+### 5.1 Kiểm tra công cụ
+
+Yêu cầu Python 3.11+ và Node.js 20+:
 
 ```powershell
-\.venv\Scripts\python.exe -m pip install -r requirements.txt
-\.venv\Scripts\python.exe -c "import cv2; print(cv2.__version__)"
-\.venv\Scripts\python.exe -m alembic upgrade head
-\.venv\Scripts\python.exe -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+python --version
+node --version
+npm --version
 ```
 
-Luôn khởi động backend bằng `\.venv\Scripts\python.exe -m uvicorn`, không dùng trực tiếp lệnh `uvicorn` của Python global. Nếu log hiển thị đường dẫn kiểu `C:\Users\...\Python311\Lib\site-packages` và gặp `No module named 'cv2'`, hãy cài dependency vào đúng môi trường:
+### 5.2 Tạo và kích hoạt virtual environment
+
+Từ thư mục gốc `timi`, trên Windows PowerShell:
 
 ```powershell
-\.venv\Scripts\python.exe -m pip install -r requirements.txt
-\.venv\Scripts\python.exe -c "import cv2; print(cv2.__version__)"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-Frontend, ở terminal khác:
+Nếu PowerShell chặn script kích hoạt, chỉ cấp quyền cho terminal hiện tại rồi
+chạy lại lệnh `Activate.ps1`:
 
 ```powershell
-cd frontend
-npm install
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+Trên macOS/Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Khi kích hoạt thành công, tên môi trường `(.venv)` sẽ xuất hiện ở đầu dòng
+lệnh. Từ đây trở đi chỉ dùng `python`; không cần gọi trực tiếp file
+`python.exe` bên trong `.venv`.
+
+### 5.3 Tạo cấu hình local
+
+Trên Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Trên macOS/Linux:
+
+```bash
+cp .env.example .env
+```
+
+Mở `.env` và cấu hình tối thiểu:
+
+- `APP_ENV=development`.
+- `DATABASE_URL`: connection string PostgreSQL/Neon dùng khi ứng dụng chạy.
+- `DATABASE_URL_UNPOOLED`: direct connection string dùng cho Alembic nếu dùng Neon.
+- `DATABASE_SCHEMA=antiscam`.
+- `JWT_SECRET_KEY`, `RISK_TELEMETRY_HASH_KEY` và `CARD_ENCRYPTION_KEY`: ba secret dài, khác nhau.
+- `CORS_ORIGINS=http://localhost:5173`.
+- `GROQ_API_KEY` và các biến email nếu cần dùng Guardian, chat hoặc OTP thật.
+
+Không commit `.env` hoặc đưa secret backend vào frontend/mobile.
+
+### 5.4 Chuẩn bị database và kiểm tra dependency
+
+Đảm bảo PostgreSQL/Neon có thể kết nối, sau đó chạy migration:
+
+```powershell
+python -c "import cv2; print(cv2.__version__)"
+python -m alembic upgrade head
+```
+
+Hai model Face ID cần tồn tại trong `models/face/`:
+
+```text
+face_detection_yunet_2023mar.onnx
+face_recognition_sface_2021dec.onnx
+```
+
+Nếu gặp `No module named 'cv2'`, kiểm tra lại venv đang được kích hoạt rồi cài
+lại dependency:
+
+```powershell
+python -m pip install -r requirements.txt
+python -c "import cv2; print(cv2.__version__)"
+```
+
+### 5.5 Chạy backend
+
+Trong terminal đã kích hoạt venv:
+
+```powershell
+python -m uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Kiểm tra:
+
+- API: http://localhost:8000/
+- Swagger: http://localhost:8000/docs
+- Health: http://localhost:8000/health
+- Database readiness: http://localhost:8000/health/ready
+
+Luôn dùng `python -m uvicorn` để tiến trình sử dụng đúng interpreter và package
+trong venv.
+
+### 5.6 Chạy frontend
+
+Mở terminal khác tại thư mục gốc dự án; frontend không cần kích hoạt Python
+venv:
+
+```powershell
+Set-Location frontend
+npm ci
 npm run dev
+```
+
+Mở http://localhost:5173. Frontend mặc định gọi backend tại
+`http://localhost:8000/api`. Nếu cần ghi đè, tạo `frontend/.env.local`:
+
+```env
+VITE_API_URL=http://localhost:8000/api
+```
+
+Sau khi làm việc xong, dừng backend/frontend bằng `Ctrl+C`. Có thể thoát khỏi
+virtual environment bằng:
+
+```powershell
+deactivate
 ```
 
 ## 6. Database migration
@@ -155,8 +269,8 @@ docker compose run --rm backend alembic upgrade head
 Tạo migration mới:
 
 ```powershell
-\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "describe change"
-\.venv\Scripts\python.exe -m alembic upgrade head
+python -m alembic revision --autogenerate -m "describe change"
+python -m alembic upgrade head
 ```
 
 Với Neon, dùng `DATABASE_URL_UNPOOLED` cho migration và kiểm tra migration trên branch/test database trước production.
@@ -266,6 +380,8 @@ DATABASE_URL=<Neon pooled URL>
 DATABASE_URL_UNPOOLED=<Neon direct URL, hostname không có -pooler>
 DATABASE_SCHEMA=antiscam
 JWT_SECRET_KEY=<random-production-secret>
+RISK_TELEMETRY_HASH_KEY=<random-production-secret-khac-JWT>
+CARD_ENCRYPTION_KEY=<random-production-secret-khac-hai-key-tren>
 OPENAI_API_KEY=<OpenAI-key>
 LLM_EXPLANATION_ENABLED=true
 MODEL_NAME=gpt-4o-mini
@@ -277,12 +393,29 @@ CHAT_AGENT_MODEL=openai/gpt-oss-20b
 CLOUDINARY_CLOUD_NAME=<Cloudinary-cloud-name>
 CLOUDINARY_API_KEY=<Cloudinary-api-key>
 CLOUDINARY_API_SECRET=<Cloudinary-api-secret>
+EMAIL_ENABLED=true
+EMAIL_PROVIDER=brevo_api
+BREVO_API_KEY=<Brevo API key moi>
+EMAIL_FROM_ADDRESS=<sender-da-xac-minh@example.com>
+EMAIL_FROM_NAME=Timi
 CORS_ORIGINS=https://<frontend-service>.onrender.com
 ```
 
 `GROQ_*`, `CHAT_AGENT_*` và `CLOUDINARY_*` phải được nhập trực tiếp trong
 Environment của backend Render. File `.env` ở máy local không được tự động
 đưa lên Render; app Android cũng không được chứa các secret này.
+
+Với Brevo, tạo **API key mới** trong `Settings → SMTP & API → API Keys`.
+`EMAIL_FROM_ADDRESS` phải là sender đã được xác minh trên Brevo.
+Backend gửi qua HTTPS `POST https://api.brevo.com/v3/smtp/email`, nên không phụ
+thuộc cổng SMTP và chạy được trên Render Free. Sau khi lưu các biến,
+chọn **Save, rebuild, and deploy**.
+
+Kiểm tra thật với một người nhận do bạn chỉ định trước khi deploy:
+
+```powershell
+python scripts\test_email.py --recipient you@example.com
+```
 
 Dockerfile đã dùng biến `PORT` của Render. `docker/entrypoint.sh` sẽ chạy `alembic upgrade head` trước khi khởi động Uvicorn.
 

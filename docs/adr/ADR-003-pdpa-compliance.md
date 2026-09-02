@@ -77,7 +77,7 @@ matched_entry_masked: str | None  # đã mask, không phải data thô
 
 **Quyết định:** Route `/transactions/analyze` không yêu cầu auth (scope demo), nhưng:
 - Error message không bao giờ leak PII
-- Test `test_user_a_cannot_see_user_b_transaction` đánh dấu `xfail` để track todo khi auth được implement
+- Test `test_user_a_cannot_see_user_b_transaction` chạy thật và xác nhận API trả `403` khi người dùng truy cập giao dịch của tài khoản khác.
 
 ---
 

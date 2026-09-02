@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   ArrowLeft,
   User,
@@ -32,6 +33,7 @@ import { useScamGuardian } from "@/components/guardian/ScamGuardianProvider";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import axiosInstance from "@/services/api/axios";
 import UserCardsSection from "@/components/profile/UserCardsSection";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 type AppNotification = {
   id: string;
@@ -43,11 +45,6 @@ type AppNotification = {
   created_at: string;
 };
 
-// Notification preferences are managed on the dedicated settings page.
-// Keep the legacy panel disabled without using a constant expression in JSX.
-const showLegacyNotificationPanel = false;
-
-/** Chuông thông báo in-app (cập nhật hệ thống từ Admin). */
 /** Chuông thông báo in-app (cập nhật hệ thống từ Admin). */
 export function ProfileNotificationBell() {
   const [open, setOpen] = useState(false);
@@ -478,11 +475,6 @@ export default function ProfilePage() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [notifications, setNotifications] = useState({
-    transaction: true,
-    security: true,
-    promotion: false,
-  });
   const [transactionPin, setTransactionPin] = useState("");
   const [currentTransactionPin, setCurrentTransactionPin] = useState("");
   const [confirmTransactionPin, setConfirmTransactionPin] = useState("");
@@ -568,7 +560,7 @@ export default function ProfilePage() {
       icon: Shield,
       isPasswordItem: true,
       label: "Bảo mật tài khoản",
-      desc: "Đổi mật khẩu, xác thực 2 lớp",
+      desc: "Đổi mật khẩu và quản lý phiên đăng nhập",
       action: () => setShowPasswordModal(true),
       accent: "from-violet-500 to-purple-600",
       bg: "bg-violet-50",
@@ -1052,74 +1044,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {showLegacyNotificationPanel && (
-          <div className="bg-white rounded-2xl shadow-sm border border-violet-100/80 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-50 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-violet-500" />
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Thông báo
-              </h3>
-            </div>
-            <div className="divide-y divide-slate-50">
-              {[
-                {
-                  key: "transaction" as const,
-                  label: "Giao dịch",
-                  desc: "Nhận thông báo khi có giao dịch mới",
-                },
-                {
-                  key: "security" as const,
-                  label: "Bảo mật",
-                  desc: "Cảnh báo khi phát hiện đăng nhập lạ",
-                },
-                {
-                  key: "promotion" as const,
-                  label: "Khuyến mãi",
-                  desc: "Thông báo ưu đãi và khuyến mãi",
-                },
-              ].map((item) => (
-                <div
-                  key={item.key}
-                  className="flex items-center justify-between px-6 py-4 hover:bg-violet-50/40 transition-colors"
-                >
-                  <div className="min-w-0 pr-4">
-                    <p className="font-semibold text-slate-900 text-base">
-                      {item.label}
-                    </p>
-                    <p className="text-sm text-slate-400 mt-0.5">{item.desc}</p>
-                  </div>
-                  <button
-                    onClick={() =>
-                      setNotifications({
-                        ...notifications,
-                        [item.key]: !notifications[item.key],
-                      })
-                    }
-                    type="button"
-                    role="switch"
-                    aria-checked={notifications[item.key]}
-                    aria-label={`Bật hoặc tắt thông báo ${item.label}`}
-                    className={`relative flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors focus:outline-none focus:ring-4 focus:ring-violet-500/20 ${
-                      notifications[item.key]
-                        ? "border-violet-700 bg-violet-600"
-                        : "border-slate-300 bg-slate-200"
-                    }`}
-                  >
-                    <div
-                      className={`absolute left-1 h-6 w-6 rounded-full bg-white shadow-md transition-transform ${
-                        notifications[item.key]
-                          ? "translate-x-6"
-                          : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          )}
-
           {/* ===== LOGOUT ===== */}
           <button
             onClick={() => void handleLogout()}
@@ -1283,7 +1207,7 @@ export default function ProfilePage() {
                         setTimeout(() => setProfileNotice(""), 3500);
                       }, 700);
                     })
-                    .catch((error: any) => setPinMessage(error?.response?.data?.detail || "Không thể thay đổi mã PIN"))
+                    .catch((error: unknown) => setPinMessage(getApiErrorMessage(error, "Không thể thay đổi mã PIN")))
                 }}
                 disabled={!/^\d{4,6}$/.test(currentTransactionPin) || !/^\d{4,6}$/.test(transactionPin) || transactionPin !== confirmTransactionPin}
                 className="flex-1 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-3.5 font-semibold text-white disabled:opacity-50 hover:shadow-lg shadow-violet-200 transition-all"
@@ -1394,8 +1318,8 @@ function EmailChangeModal({
       const result = await authApi.requestEmailChange(normalized);
       setSent(true);
       setMessage(result.message);
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || "Không thể gửi mã xác minh");
+    } catch (requestError: unknown) {
+      setError(getApiErrorMessage(requestError, "Không thể gửi mã xác minh"));
     } finally {
       setBusy(false);
     }
@@ -1411,8 +1335,8 @@ function EmailChangeModal({
     try {
       const updatedUser = await authApi.verifyEmailChange(oldOtp, newOtp);
       onSuccess(updatedUser);
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || "Mã xác minh không đúng");
+    } catch (requestError: unknown) {
+      setError(getApiErrorMessage(requestError, "Mã xác minh không đúng"));
     } finally {
       setBusy(false);
     }
@@ -1440,6 +1364,8 @@ function EmailChangeModal({
 }
 
 function PasswordChangeModal({ onClose }: { onClose: () => void }) {
+  const setAuth = useAuthStore((state) => state.setAuth);
+  const rememberMe = useAuthStore((state) => state.rememberMe);
   const [form, setForm] = useState({ current: "", new: "", confirm: "" });
   const [showPass, setShowPass] = useState({
     current: false,
@@ -1448,15 +1374,28 @@ function PasswordChangeModal({ onClose }: { onClose: () => void }) {
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.new !== form.confirm) return;
+    if (form.new !== form.confirm || loading) return;
+    setError("");
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setLoading(false);
-    setSuccess(true);
-    setTimeout(onClose, 1500);
+    try {
+      const response = await authApi.changePassword(form.current, form.new);
+      setAuth(response.access_token, response.user, rememberMe, false);
+      setSuccess(true);
+      window.setTimeout(onClose, 1500);
+    } catch (requestError: unknown) {
+      setError(
+        axios.isAxiosError(requestError) &&
+          typeof requestError.response?.data?.detail === "string"
+          ? requestError.response.data.detail
+          : "Không thể đổi mật khẩu. Vui lòng thử lại.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return createPortal(
@@ -1465,7 +1404,9 @@ function PasswordChangeModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-slate-900">Đổi mật khẩu</h2>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Đóng cửa sổ đổi mật khẩu"
             className="p-2 hover:bg-slate-100 rounded-full transition-colors"
           >
             <X className="w-5 h-5 text-slate-400" />
@@ -1491,13 +1432,15 @@ function PasswordChangeModal({ onClose }: { onClose: () => void }) {
               ] as const
             ).map((field) => (
               <div key={field.key}>
-                <label className="text-sm text-slate-600 mb-1.5 block font-medium">
+                <label htmlFor={`password-${field.key}`} className="text-sm text-slate-600 mb-1.5 block font-medium">
                   {field.label}
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-400" />
                   <input
+                    id={`password-${field.key}`}
                     type={showPass[field.key] ? "text" : "password"}
+                    autoComplete={field.key === "current" ? "current-password" : "new-password"}
                     className="w-full pl-11 pr-11 py-3 bg-slate-50 rounded-xl border border-transparent focus:ring-2 focus:ring-violet-400 focus:border-violet-300 outline-none text-slate-800 transition-all"
                     value={form[field.key]}
                     onChange={(e) =>
@@ -1506,7 +1449,7 @@ function PasswordChangeModal({ onClose }: { onClose: () => void }) {
                   />
                   <button
                     type="button"
-                    tabIndex={-1}
+                    aria-label={showPass[field.key] ? `Ẩn ${field.label.toLowerCase()}` : `Hiện ${field.label.toLowerCase()}`}
                     onClick={() =>
                       setShowPass({
                         ...showPass,
@@ -1527,6 +1470,12 @@ function PasswordChangeModal({ onClose }: { onClose: () => void }) {
 
             {form.confirm && form.new !== form.confirm && (
               <p className="text-sm text-red-500">Mật khẩu không khớp</p>
+            )}
+
+            {error && (
+              <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+                {error}
+              </p>
             )}
 
             <button

@@ -15,6 +15,18 @@ import { useAuthStore } from "@/stores/authStore";
 
 export type GuardianStatus = "idle" | "starting" | "active" | "stopped" | "error";
 
+const VAD_RMS_THRESHOLD = 0.04;
+const VAD_SILENCE_TAIL_MS = 850;
+const VAD_MIN_SEGMENT_MS = 1_100;
+const VAD_MAX_SEGMENT_MS = 5_000;
+const FALLBACK_SEGMENT_MS = 3_000;
+
+type LatencyMetrics = {
+  count: number;
+  totalMs: number;
+  lastMs: number | null;
+};
+
 type SpeechRecognitionResultEvent = {
   resultIndex: number;
   results: ArrayLike<{
@@ -64,6 +76,12 @@ export interface ScamGuardianContextValue {
   audioContextState: AudioContextState | "unavailable";
   mediaTrackState: "none" | "live" | "ended";
   recorderState: RecordingState | "none";
+  sttTranscriptCount: number;
+  sttAverageLatencyMs: number | null;
+  sttLastLatencyMs: number | null;
+  agentDecisionCount: number;
+  agentAverageLatencyMs: number | null;
+  agentLastLatencyMs: number | null;
   speaker: GuardianSpeaker;
   retainTranscript: boolean;
   setSpeaker: (speaker: GuardianSpeaker) => void;
@@ -159,6 +177,8 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
   const [audioContextState, setAudioContextState] = useState<AudioContextState | "unavailable">("unavailable");
   const [mediaTrackState, setMediaTrackState] = useState<"none" | "live" | "ended">("none");
   const [recorderState, setRecorderState] = useState<RecordingState | "none">("none");
+  const [sttMetrics, setSttMetrics] = useState<LatencyMetrics>({ count: 0, totalMs: 0, lastMs: null });
+  const [agentMetrics, setAgentMetrics] = useState<LatencyMetrics>({ count: 0, totalMs: 0, lastMs: null });
   const socketRef = useRef<WebSocket | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -178,6 +198,9 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
   const autoStartTimerRef = useRef<number | null>(null);
   const startupRetryCountRef = useRef(0);
   const captureStartedAtRef = useRef<number | null>(null);
+  const segmentStartedAtRef = useRef<number | null>(null);
+  const lastSpeechAtRef = useRef<number | null>(null);
+  const vadAvailableRef = useRef(false);
   const audioChunkCountRef = useRef(0);
   const voiceDetectedRef = useRef(false);
   const segmentRestartPendingRef = useRef(false);
@@ -247,6 +270,9 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
     setMediaTrackState("none");
     segmentSpeechDetectedRef.current = false;
     captureStartedAtRef.current = null;
+    segmentStartedAtRef.current = null;
+    lastSpeechAtRef.current = null;
+    vadAvailableRef.current = false;
     voiceDetectedRef.current = false;
     segmentRestartPendingRef.current = false;
   }, []);
@@ -307,10 +333,26 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
         } else {
           setPartialText("");
           setTranscript((current) => [...current.slice(-49), transcriptEvent]);
+          const sttLatencyMs = transcriptEvent.stt_latency_ms;
+          if (typeof sttLatencyMs === "number") {
+            setSttMetrics((current) => ({
+              count: current.count + 1,
+              totalMs: current.totalMs + sttLatencyMs,
+              lastMs: sttLatencyMs,
+            }));
+          }
         }
       } else if (payload.type === "risk_update") {
         const riskEvent = payload as GuardianRiskEvent;
         setRisk(riskEvent);
+        const agentLatencyMs = riskEvent.agent_latency_ms;
+        if (typeof agentLatencyMs === "number") {
+          setAgentMetrics((current) => ({
+            count: current.count + 1,
+            totalMs: current.totalMs + agentLatencyMs,
+            lastMs: agentLatencyMs,
+          }));
+        }
         // Fallback for a server version that emits the fail-closed decision
         // without the preceding agent_status event.
         if (
@@ -441,7 +483,12 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
     setAudioContextState("unavailable");
     setMediaTrackState("none");
     setRecorderState("none");
+    setSttMetrics({ count: 0, totalMs: 0, lastMs: null });
+    setAgentMetrics({ count: 0, totalMs: 0, lastMs: null });
     captureStartedAtRef.current = null;
+    segmentStartedAtRef.current = null;
+    lastSpeechAtRef.current = null;
+    vadAvailableRef.current = false;
     voiceDetectedRef.current = false;
     segmentRestartPendingRef.current = false;
     let createdSession: GuardianSession | null = null;
@@ -449,7 +496,17 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("Trình duyệt không hỗ trợ microphone realtime.");
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          // These are preference constraints, not mandatory hardware
+          // requirements, so browsers can gracefully use what they support.
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 16_000 },
+        },
+      });
       if (runId !== guardianRunIdRef.current || stoppingRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -481,7 +538,11 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
         void audioContext.resume();
         setAudioContextState(audioContext.state);
         vadAvailable = audioContext.state === "running";
-        audioContext.onstatechange = () => setAudioContextState(audioContext.state);
+        vadAvailableRef.current = vadAvailable;
+        audioContext.onstatechange = () => {
+          vadAvailableRef.current = audioContext.state === "running";
+          setAudioContextState(audioContext.state);
+        };
         const samples = new Uint8Array(analyser.fftSize);
         audioContextRef.current = audioContext;
         segmentSpeechDetectedRef.current = false;
@@ -494,12 +555,36 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
           }
           // A small RMS threshold filters silence while retaining normal speech.
           const level = Math.min(1, Math.sqrt(squared / samples.length) * 4);
-          const detected = level >= 0.04;
+          const detected = level >= VAD_RMS_THRESHOLD;
+          const now = Date.now();
           setAudioLevel(level);
           setVoiceDetected(detected);
           voiceDetectedRef.current = detected;
           if (detected) {
             segmentSpeechDetectedRef.current = true;
+            lastSpeechAtRef.current = now;
+            return;
+          }
+
+          // Send a completed phrase shortly after the speaker pauses instead
+          // of waiting for a fixed three-second window. The minimum duration
+          // prevents tiny fragments; the recorder timer remains a hard cap.
+          const recorder = recorderRef.current;
+          const segmentStartedAt = segmentStartedAtRef.current;
+          const lastSpeechAt = lastSpeechAtRef.current;
+          if (
+            recorder?.state === "recording"
+            && segmentSpeechDetectedRef.current
+            && segmentStartedAt !== null
+            && lastSpeechAt !== null
+            && now - segmentStartedAt >= VAD_MIN_SEGMENT_MS
+            && now - lastSpeechAt >= VAD_SILENCE_TAIL_MS
+          ) {
+            try {
+              recorder.stop();
+            } catch {
+              // The existing recorder watchdog will recover this segment.
+            }
           }
         }, 100);
       }
@@ -593,7 +678,7 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
         chunks: Blob[],
         recorderMimeType: string,
         hasSpeech: boolean,
-        durationMs = 3000,
+        durationMs = FALLBACK_SEGMENT_MS,
       ) => {
         if (!hasSpeech || chunks.length === 0 || socket.readyState !== WebSocket.OPEN) {
           setAudioSkippedCount((current) => current + 1);
@@ -636,6 +721,8 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
         const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         const segmentChunks: Blob[] = [];
         captureStartedAtRef.current ??= Date.now();
+        segmentStartedAtRef.current = Date.now();
+        lastSpeechAtRef.current = null;
         setRecorderState(recorder.state);
         recorder.onstart = () => setRecorderState("recording");
         recorder.ondataavailable = (event) => {
@@ -648,8 +735,14 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
           if (recorderRef.current === recorder) recorderRef.current = null;
           segmentRestartPendingRef.current = true;
           const hasSpeech = segmentSpeechDetectedRef.current || voiceDetectedRef.current;
+          const startedAt = segmentStartedAtRef.current;
+          const durationMs = startedAt === null
+            ? FALLBACK_SEGMENT_MS
+            : Math.max(1, Math.min(VAD_MAX_SEGMENT_MS, Date.now() - startedAt));
           segmentSpeechDetectedRef.current = false;
-          void sendRecordedSegment(segmentChunks, recorder.mimeType || mimeType, hasSpeech, 3000).finally(() => {
+          segmentStartedAtRef.current = null;
+          lastSpeechAtRef.current = null;
+          void sendRecordedSegment(segmentChunks, recorder.mimeType || mimeType, hasSpeech, durationMs).finally(() => {
             segmentRestartPendingRef.current = false;
             // Yield one tick before recreating MediaRecorder. Some Chromium
             // versions reject a new recorder while the previous stop event is
@@ -677,12 +770,12 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
         recorderTimerRef.current = window.setTimeout(() => {
           recorderTimerRef.current = null;
           if (recorder.state === "recording") recorder.stop();
-        }, 3000);
+        }, vadAvailableRef.current ? VAD_MAX_SEGMENT_MS : FALLBACK_SEGMENT_MS);
       };
-      // If WebAudio is unavailable/suspended, do not silently discard every
-      // recorder segment. The backend still receives the audio and can run
-      // server-side STT; VAD will take over once the context is running.
-      segmentSpeechDetectedRef.current = !vadAvailable;
+      // Without WebAudio there is no local VAD, so keep the conservative
+      // server-STT fallback. When WebAudio exists but needs a user gesture to
+      // resume, wait for VAD rather than uploading a silent first segment.
+      segmentSpeechDetectedRef.current = !AudioContextConstructor;
       startAudioSegment();
       captureWatchdogRef.current = window.setInterval(() => {
         if (stoppingRef.current || socket.readyState !== WebSocket.OPEN) return;
@@ -905,6 +998,12 @@ export function ScamGuardianProvider({ children }: { children: React.ReactNode }
     audioContextState,
     mediaTrackState,
     recorderState,
+    sttTranscriptCount: sttMetrics.count,
+    sttAverageLatencyMs: sttMetrics.count > 0 ? Math.round(sttMetrics.totalMs / sttMetrics.count) : null,
+    sttLastLatencyMs: sttMetrics.lastMs,
+    agentDecisionCount: agentMetrics.count,
+    agentAverageLatencyMs: agentMetrics.count > 0 ? Math.round(agentMetrics.totalMs / agentMetrics.count) : null,
+    agentLastLatencyMs: agentMetrics.lastMs,
     speaker,
     retainTranscript,
     setSpeaker,

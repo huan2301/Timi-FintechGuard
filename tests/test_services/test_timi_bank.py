@@ -1,15 +1,19 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 
 from src.app.models.timi_ledger_entry import TimiLedgerEntryType
 from src.app.models.user import UserRole
+from src.app.routers.api.recipients import resolve_recipient
 from src.app.schemas.auth import (
     LoginLocationRequest,
     LoginRequest,
     RegisterRequest,
 )
+from src.app.schemas.recipient import RecipientLookupRequest
 from src.app.services.recipient_lookup import RecipientLookupInvalid, lookup_recipient
 from src.app.services.timi_bank import (
     TIMI_BANK_CODE,
@@ -59,6 +63,21 @@ def test_timi_bank_code_is_unambiguous() -> None:
     assert not is_timi_bank(None)
 
 
+def test_external_recipient_lookup_is_fail_closed_without_a_settlement_provider() -> None:
+    db = Mock()
+    user = SimpleNamespace(id=uuid4())
+
+    with pytest.raises(HTTPException) as blocked:
+        resolve_recipient(
+            RecipientLookupRequest(account_number="1234567890", bank_code="VCB"),
+            db,
+            user,
+        )
+
+    assert blocked.value.status_code == 503
+    db.scalar.assert_not_called()
+
+
 def test_registration_phone_must_have_exactly_ten_digits() -> None:
     payload = RegisterRequest(
         email="ten-digits@example.com",
@@ -81,6 +100,7 @@ def test_location_is_required_on_the_post_login_setup_screen() -> None:
     credentials = LoginRequest(
         email="location-flow@example.com",
         password="Password-123!",
+        device_id=LOCATION_CONTEXT["device_id"],
     )
     assert credentials.email == "location-flow@example.com"
 
@@ -95,14 +115,10 @@ def test_location_is_required_on_the_post_login_setup_screen() -> None:
 def test_internal_transfer_creates_balanced_debit_and_credit_entries() -> None:
     sender = SimpleNamespace(id=uuid4(), balance=500_000)
     recipient = SimpleNamespace(id=uuid4(), balance=125_000)
-    transaction = SimpleNamespace(
-        id=uuid4(), amount=200_000, timi_recipient_user_id=None
-    )
+    transaction = SimpleNamespace(id=uuid4(), amount=200_000, timi_recipient_user_id=None)
     db = RecordingSession()
 
-    apply_timi_transfer(
-        db, transaction=transaction, sender=sender, recipient=recipient
-    )
+    apply_timi_transfer(db, transaction=transaction, sender=sender, recipient=recipient)
 
     assert sender.balance == 300_000
     assert recipient.balance == 325_000
@@ -122,15 +138,11 @@ def test_internal_transfer_creates_balanced_debit_and_credit_entries() -> None:
 def test_insufficient_balance_never_changes_either_account() -> None:
     sender = SimpleNamespace(id=uuid4(), balance=199_999)
     recipient = SimpleNamespace(id=uuid4(), balance=125_000)
-    transaction = SimpleNamespace(
-        id=uuid4(), amount=200_000, timi_recipient_user_id=None
-    )
+    transaction = SimpleNamespace(id=uuid4(), amount=200_000, timi_recipient_user_id=None)
     db = RecordingSession()
 
     with pytest.raises(InsufficientTimiBalance):
-        apply_timi_transfer(
-            db, transaction=transaction, sender=sender, recipient=recipient
-        )
+        apply_timi_transfer(db, transaction=transaction, sender=sender, recipient=recipient)
 
     assert sender.balance == 199_999
     assert recipient.balance == 125_000
@@ -140,15 +152,11 @@ def test_insufficient_balance_never_changes_either_account() -> None:
 
 def test_self_transfer_is_rejected_before_any_balance_change() -> None:
     account = SimpleNamespace(id=uuid4(), balance=500_000)
-    transaction = SimpleNamespace(
-        id=uuid4(), amount=200_000, timi_recipient_user_id=None
-    )
+    transaction = SimpleNamespace(id=uuid4(), amount=200_000, timi_recipient_user_id=None)
     db = RecordingSession()
 
     with pytest.raises(TimiSelfTransfer):
-        apply_timi_transfer(
-            db, transaction=transaction, sender=account, recipient=account
-        )
+        apply_timi_transfer(db, transaction=transaction, sender=account, recipient=account)
 
     assert account.balance == 500_000
     assert db.added == []

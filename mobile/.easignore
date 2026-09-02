@@ -1,0 +1,67 @@
+# Dependencies and generated output
+node_modules/
+node_modules/**
+.venv/
+.venv/**
+venv/
+venv/**
+__pycache__/
+__pycache__/**
+.pytest_cache/
+.pytest_cache/**
+.expo/
+.expo/**
+dist/
+dist/**
+*.apk
+*.aab
+web-build
+web-build/**
+builds/
+builds/**
+android
+android/**
+ios
+ios/**
+*.tsbuildinfo
+
+# Monorepo folders that the Android app never imports. EAS archives from the
+# Git repository root, so excluding these keeps backend/web/model artifacts
+# and old APKs out of the mobile upload.
+frontend/
+frontend/**
+models/
+models/**
+docs/
+docs/**
+presentation/
+presentation/**
+tests/
+tests/**
+data/
+data/**
+*.dump
+
+# Local credentials and environment values
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+
+# Editor and local tooling
+.vscode
+.vscode/**
+.claude
+.claude/**
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store

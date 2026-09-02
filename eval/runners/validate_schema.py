@@ -1,4 +1,5 @@
 """Validate golden JSONL: JSON parse + required fields."""
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,9 @@ def main() -> int:
         if err:
             all_err.extend(err)
         else:
-            n = sum(1 for L in p.read_text(encoding="utf-8").splitlines() if L.strip() and not L.strip().startswith("#"))
+            n = sum(
+                1 for L in p.read_text(encoding="utf-8").splitlines() if L.strip() and not L.strip().startswith("#")
+            )
             print(f"OK {rel} ({n} cases)")
     if all_err:
         print("FAILED:")

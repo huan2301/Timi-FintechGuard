@@ -99,9 +99,7 @@ def _format_vnd(value: int | float) -> str:
 def _fold_text(value: str) -> str:
     """Case- and accent-insensitive text for Vietnamese keyword matching."""
     decomposed = unicodedata.normalize("NFD", value.casefold())
-    return "".join(
-        char for char in decomposed if unicodedata.category(char) != "Mn"
-    ).replace("đ", "d")
+    return "".join(char for char in decomposed if unicodedata.category(char) != "Mn").replace("đ", "d")
 
 
 def _utcnow() -> datetime:
@@ -140,9 +138,7 @@ def _blacklist_signal(db: Session, request: AssessRequest) -> RiskSignalCandidat
     )
 
 
-def _trusted_recipient_signal(
-    db: Session, user_id: object, request: AssessRequest
-) -> RiskSignalCandidate | None:
+def _trusted_recipient_signal(db: Session, user_id: object, request: AssessRequest) -> RiskSignalCandidate | None:
     query = select(TrustedRecipient).where(
         TrustedRecipient.user_id == user_id,
         TrustedRecipient.account_number == request.payee_account.replace(" ", "").strip(),
@@ -189,9 +185,7 @@ def _amount_signal(amount: int) -> RiskSignalCandidate | None:
     )
 
 
-def _behavioral_amount_signal(
-    db: Session, user_id: object, request: AssessRequest
-) -> RiskSignalCandidate | None:
+def _behavioral_amount_signal(db: Session, user_id: object, request: AssessRequest) -> RiskSignalCandidate | None:
     """Compare against the user's recent *completed* outgoing transfers."""
     cutoff = _utcnow() - timedelta(days=BEHAVIOR_HISTORY_DAYS)
     historical_amounts = [
@@ -213,10 +207,7 @@ def _behavioral_amount_signal(
     baseline = max(1, int(median(historical_amounts)))
     multiple = request.amount / baseline
     multiple_label = f"{multiple:,.0f}".replace(",", ".")
-    if (
-        request.amount < BEHAVIORAL_AMOUNT_MIN_VND
-        or multiple < BEHAVIORAL_AMOUNT_MULTIPLIER
-    ):
+    if request.amount < BEHAVIORAL_AMOUNT_MIN_VND or multiple < BEHAVIORAL_AMOUNT_MULTIPLIER:
         return None
     return RiskSignalCandidate(
         signal_type="behavioral_amount_anomaly",
@@ -239,9 +230,7 @@ def _recipient_key(account: str, bank_code: str | None) -> tuple[str, str]:
     )
 
 
-def _transaction_velocity_signal(
-    db: Session, user_id: object, request: AssessRequest
-) -> RiskSignalCandidate | None:
+def _transaction_velocity_signal(db: Session, user_id: object, request: AssessRequest) -> RiskSignalCandidate | None:
     """Detect a burst to many distinct recipients, never just many retries."""
     cutoff = _utcnow() - VELOCITY_WINDOW
     previous_recipients = {
@@ -263,8 +252,7 @@ def _transaction_velocity_signal(
         severity="high",
         score=0.65,
         explanation=(
-            f"Bạn đang chuyển cho {recipient_count} người nhận trong "
-            f"{int(VELOCITY_WINDOW.total_seconds() // 60)} phút."
+            f"Bạn đang chuyển cho {recipient_count} người nhận trong {int(VELOCITY_WINDOW.total_seconds() // 60)} phút."
         ),
         evidence={
             "distinct_recipient_count": recipient_count,
@@ -273,9 +261,7 @@ def _transaction_velocity_signal(
     )
 
 
-def _haversine_distance_km(
-    latitude_a: int, longitude_a: int, latitude_b: int, longitude_b: int
-) -> float:
+def _haversine_distance_km(latitude_a: int, longitude_a: int, latitude_b: int, longitude_b: int) -> float:
     """Distance between coarse E2 latitude/longitude points."""
     lat_a, lon_a = math.radians(latitude_a / 100), math.radians(longitude_a / 100)
     lat_b, lon_b = math.radians(latitude_b / 100), math.radians(longitude_b / 100)
@@ -381,9 +367,7 @@ def collect_telemetry_signals(
 
 
 # Kept as a private alias for existing focused tests and internal callers.
-def _telemetry_signals(
-    db: Session, user_id: object, telemetry: RiskTelemetry | None
-) -> list[RiskSignalCandidate]:
+def _telemetry_signals(db: Session, user_id: object, telemetry: RiskTelemetry | None) -> list[RiskSignalCandidate]:
     return collect_telemetry_signals(db, user_id, telemetry)
 
 
@@ -404,9 +388,7 @@ def _note_signals(note: str | None) -> list[RiskSignalCandidate]:
                 evidence={"matched_keyword_count": len(matched)},
             )
         )
-    matched_scam_categories = sorted(
-        label for keyword, label in SCAM_KEYWORDS if keyword in lowered
-    )
+    matched_scam_categories = sorted(label for keyword, label in SCAM_KEYWORDS if keyword in lowered)
     if matched_scam_categories:
         signals.append(
             RiskSignalCandidate(
@@ -420,9 +402,7 @@ def _note_signals(note: str | None) -> list[RiskSignalCandidate]:
                 },
             )
         )
-    matched_reward_cues = sorted(
-        {keyword for keyword in REWARD_CLAIM_KEYWORDS if keyword in lowered}
-    )
+    matched_reward_cues = sorted({keyword for keyword in REWARD_CLAIM_KEYWORDS if keyword in lowered})
     if matched_reward_cues:
         signals.append(
             RiskSignalCandidate(
@@ -502,19 +482,18 @@ def score_from_signals(signals: list[RiskSignalCandidate]) -> tuple[float, str]:
         score = max(0.0, score - 0.15)
 
     strong_signal_count = sum(
-        1 for signal in positive
+        1
+        for signal in positive
         if signal.severity == "high"
-        or signal.signal_type in {
-            "suspicious_note", "suspicious_link", "behavioral_amount_anomaly"
-        }
+        or signal.signal_type in {"suspicious_note", "suspicious_link", "behavioral_amount_anomaly"}
     )
     high_confidence_signal = any(
         signal.signal_type in {"blacklist_exact_match", "transaction_velocity", "impossible_travel"}
         for signal in positive
     )
-    behavioral_amount_to_new_payee = {
-        "behavioral_amount_anomaly", "new_payee"
-    }.issubset({signal.signal_type for signal in positive})
+    behavioral_amount_to_new_payee = {"behavioral_amount_anomaly", "new_payee"}.issubset(
+        {signal.signal_type for signal in positive}
+    )
     if (
         not has_exact_blacklist
         and not high_confidence_signal

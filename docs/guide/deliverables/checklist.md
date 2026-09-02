@@ -42,14 +42,14 @@ weight: 1
 - **Tips:** Follow template trong `presentation/README.md`
 
 #### 8. Weekly Journal
-- **Location:** `/JOURNAL.md`
+- **Location:** Đã hợp nhất phần tiến độ vào `/README.md`
 - **Yêu cầu:** Ghi lại mỗi tuần: mục tiêu, hoàn thành, khó khăn, bài học
-- **Tips:** Template đã có sẵn, chỉ cần điền
+- **Tips:** Dùng phần roadmap trong README; lịch sử chi tiết xem Git
 
 #### 9. Worklog
-- **Location:** `/WORKLOG.md`
+- **Location:** Không duy trì file riêng; dùng lịch sử Git và `/README.md`
 - **Yêu cầu:** Ghi lại hàng ngày: ai làm gì, kết quả gì
-- **Tips:** Template đã có sẵn, cập nhật mỗi ngày
+- **Tips:** Dùng commit history hoặc công cụ quản lý công việc của nhóm
 
 #### 10. Evaluation Evidence
 - **Location:** `/eval/results/report.md`

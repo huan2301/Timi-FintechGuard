@@ -52,9 +52,9 @@ const serviceCards: ServiceCard[] = [
     icon: ReceiptText,
     eyebrow: "02 · Tiện ích",
     title: "Thanh toán hóa đơn",
-    description: "Quản lý điện, nước, internet và các khoản định kỳ trong một quy trình rõ ràng.",
-    action: "/dashboard",
-    actionLabel: "Xem tổng quan",
+    description: "Tính năng đang trong lộ trình; hiện chưa tạo hoặc quyết toán hóa đơn thật.",
+    action: "/help",
+    actionLabel: "Xem trạng thái tính năng",
     tone: "from-emerald-500 to-teal-600",
   },
   {
@@ -62,9 +62,9 @@ const serviceCards: ServiceCard[] = [
     icon: Smartphone,
     eyebrow: "03 · Kết nối",
     title: "Nạp điện thoại",
-    description: "Lưu số thường dùng và theo dõi các khoản nạp ngay trong lịch sử giao dịch.",
-    action: "/dashboard",
-    actionLabel: "Mở Timi Banking",
+    description: "Tính năng đang trong lộ trình; hiện chưa kết nối nhà mạng hoặc thu tiền thật.",
+    action: "/help",
+    actionLabel: "Xem trạng thái tính năng",
     tone: "from-fuchsia-500 to-purple-600",
   },
   {
@@ -91,7 +91,7 @@ const serviceCards: ServiceCard[] = [
     id: "protection",
     icon: ShieldCheck,
     eyebrow: "06 · Bảo vệ",
-    title: "AI Anti-Scam 24/7",
+    title: "AI Anti-Scam chủ động",
     description: "Phân tích tín hiệu bất thường, giải thích rủi ro và cho bạn thêm thời gian kiểm tra.",
     action: "/demo",
     actionLabel: "Xem demo bảo vệ",
@@ -130,7 +130,7 @@ export default function ServicesPage() {
                 Mọi công cụ tài chính, trong một trải nghiệm an tâm.
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-                Timi kết nối giao dịch, thanh toán, quản lý chi tiêu và bảo vệ chống lừa đảo để bạn luôn biết điều gì đang xảy ra với tiền của mình.
+                Timi kết hợp chuyển tiền mô phỏng, tra cứu người nhận, lịch sử giao dịch và phân tích rủi ro để bạn hiểu rõ từng quyết định trong bản demo.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link to={isAuthenticated ? "/dashboard" : "/register"} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#4F6BFF] px-6 py-3.5 font-bold text-white transition hover:bg-[#3D53E8]">
@@ -207,7 +207,7 @@ export default function ServicesPage() {
 
         <section className="px-6 py-16 sm:py-20 lg:px-12 xl:px-20">
           <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-7 rounded-[2rem] bg-gradient-to-r from-blue-600 to-violet-600 p-8 text-white shadow-xl shadow-blue-200 sm:p-12 md:flex-row md:items-center">
-            <div><h2 className="text-3xl font-bold">Sẵn sàng dùng Timi?</h2><p className="mt-2 max-w-xl leading-7 text-blue-100">Đăng ký miễn phí để trải nghiệm giao dịch và các lớp bảo vệ thông minh.</p></div>
+            <div><h2 className="text-3xl font-bold">Sẵn sàng dùng Timi?</h2><p className="mt-2 max-w-xl leading-7 text-blue-100">Đăng ký tài khoản thử nghiệm để trải nghiệm giao dịch mô phỏng và các lớp bảo vệ thông minh.</p></div>
             <Link to={isAuthenticated ? "/dashboard" : "/register"} className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-white px-6 py-3.5 font-bold text-blue-700 transition hover:bg-blue-50">Tiếp tục <ArrowRight className="h-5 w-5" /></Link>
           </div>
         </section>

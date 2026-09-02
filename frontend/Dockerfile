@@ -4,6 +4,7 @@ FROM node:20-alpine AS build
 WORKDIR /frontend
 COPY package*.json ./
 RUN npm ci
+RUN npm audit --audit-level=high
 COPY . .
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL

@@ -338,10 +338,11 @@ def _conversation_payload(
 ) -> dict[str, Any]:
     # Bound context sent to the provider.  Raw transcript is never persisted
     # by this service and is sent only when the user has an active session.
-    segments = [
-        {"speaker": speaker, "text": text[:600]}
-        for speaker, text in state.segments[-16:]
-    ]
+    # ``GuardianConversationState`` already keeps a bounded rolling window.
+    # Preserve that full recent context so the model can combine signals across
+    # turns (for example bank impersonation + urgency + OTP) without receiving
+    # the entire call history.
+    segments = [{"speaker": speaker, "text": text[:600]} for speaker, text in state.segments]
     return {
         "latest_transcript": latest_text[:2000],
         "conversation": segments,
@@ -353,9 +354,7 @@ def _normalize_for_policy(value: str) -> str:
     """Normalize Vietnamese text for a small, auditable evidence policy."""
 
     decomposed = unicodedata.normalize("NFD", value.lower())
-    return "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    ).replace("đ", "d")
+    return "".join(character for character in decomposed if not unicodedata.combining(character)).replace("đ", "d")
 
 
 def _has_pattern(text: str, pattern: str) -> bool:
@@ -465,15 +464,12 @@ def _direct_evidence_guardrail(
         r"(?:ma pin|so pin|mat khau).{0,35}(?:cho toi|cung cap|doc|gui)|"
         r"(?:cho toi biet|cung cap|doc|gui).{0,35}(?:ma pin|so pin|mat khau)",
     )
-    money_transfer_request = (
-        _has_phrase(text, "chuyen tien", "chuyen khoan", "chuyen toan bo so tien")
-        and (
-            safe_account_scam
-            or authority_impersonation
-            or authority_claim
-            or legal_threat
-            or _has_phrase(text, "phai chuyen", "neu khong chuyen")
-        )
+    money_transfer_request = _has_phrase(text, "chuyen tien", "chuyen khoan", "chuyen toan bo so tien") and (
+        safe_account_scam
+        or authority_impersonation
+        or authority_claim
+        or legal_threat
+        or _has_phrase(text, "phai chuyen", "neu khong chuyen")
     )
 
     if authority_impersonation:
@@ -524,19 +520,18 @@ def _direct_evidence_guardrail(
         or (bank_impersonation and urgency)
     )
     warning = bank_impersonation or (
-        _has_phrase(text, "tai khoan", "han cuoi")
-        and _has_phrase(text, "co van de", "kiem tra som", "xu ly nhanh")
+        _has_phrase(text, "tai khoan", "han cuoi") and _has_phrase(text, "co van de", "kiem tra som", "xu ly nhanh")
     )
 
     if critical:
         action, level, score = "STOP", "critical", 90
-        explanation = "Phat hien yeu cau nhay cam co bang chung truc tiep; hay dung cuoc goi."
+        explanation = "Phát hiện yêu cầu cung cấp thông tin bảo mật hoặc chuyển tiền đáng ngờ; hãy dừng cuộc gọi."
     elif high:
         action, level, score = "PAUSE", "high", 60
-        explanation = "Co tin hieu rui ro truc tiep; hay tam dung va tu xac minh qua kenh chinh thuc."
+        explanation = "Có dấu hiệu rủi ro trong cuộc gọi; hãy tạm dừng và tự xác minh qua kênh chính thức."
     elif warning:
         action, level, score = "MONITOR", "warning", 30
-        explanation = "Co tin hieu can theo doi; chua thuc hien thao tac nhay cam."
+        explanation = "Có dấu hiệu cần theo dõi; chưa nên thực hiện thao tác bảo mật hoặc chuyển tiền."
     else:
         return agent_result
 
@@ -657,11 +652,7 @@ def analyze_with_guardian_agent(
             for signal in decision.signals
         ),
     )
-    return (
-        _direct_evidence_guardrail(state, agent_result)
-        if apply_direct_guardrail
-        else agent_result
-    )
+    return _direct_evidence_guardrail(state, agent_result) if apply_direct_guardrail else agent_result
 
 
 def _guardian_completion_with_key_failover(
@@ -776,10 +767,7 @@ def _agent_unavailable_result(reason: str, *, stop: bool) -> GuardianRiskResult:
         risk_level=level,
         scenario="agent_unavailable",
         recommended_action=action,
-        explanation=(
-            "Guardian Risk Agent tạm thời không phản hồi; hệ thống tạm dừng "
-            f"để bảo vệ giao dịch ({reason})."
-        ),
+        explanation=(f"Guardian Risk Agent tạm thời không phản hồi; hệ thống tạm dừng để bảo vệ giao dịch ({reason})."),
         signals=(
             GuardianSignal(
                 signal_type="agent_unavailable",

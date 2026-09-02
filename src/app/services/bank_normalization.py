@@ -38,6 +38,7 @@ _ALIASES = {
     "STB": "STB",
 }
 
+
 def normalize_bank_name(value: str | None) -> str | None:
     if not value:
         return None

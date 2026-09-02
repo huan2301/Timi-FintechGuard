@@ -26,7 +26,7 @@ import os
 import sys
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +38,7 @@ try:
     from src.app.services.agent_provider_config import guardian_provider_config
     from src.app.services.scam_guardian import GuardianConversationState, GuardianRiskResult
     from src.app.services.scam_guardian_agent import (
-        analyze_with_guardian_agent,
+        GUARDIAN_AGENT_PROMPT_VERSION,
         GuardianAgentUnavailableError,
         _direct_evidence_guardrail,
         analyze_with_guardian_agent,
@@ -57,11 +57,21 @@ MAX_CASE_ATTEMPTS = max(1, int(os.getenv("GUARDIAN_EVAL_MAX_ATTEMPTS", "3")))
 MAX_RETRY_WAIT_SECONDS = 30.0
 EVAL_MODES = {"hybrid", "model", "policy"}
 EVAL_MODE = os.getenv("GUARDIAN_EVAL_MODE", "hybrid").strip().lower()
-EVAL_CASE_IDS = {
-    value.strip()
-    for value in os.getenv("GUARDIAN_EVAL_CASE_IDS", "").split(",")
-    if value.strip()
-}
+EVAL_CASE_IDS = {value.strip() for value in os.getenv("GUARDIAN_EVAL_CASE_IDS", "").split(",") if value.strip()}
+
+
+def _error_metadata(exc: GuardianAgentUnavailableError) -> dict[str, Any]:
+    """Keep provider failures machine-readable without exposing credentials."""
+    return {
+        "error_type": type(exc).__name__,
+        "retry_after_seconds": exc.retry_after_seconds,
+        "provider_message": str(exc)[:500],
+    }
+
+
+def _should_retry(exc: GuardianAgentUnavailableError) -> bool:
+    """Agent availability failures are transient within the bounded retry loop."""
+    return exc.retry_after_seconds >= 0
 
 
 def policy_only_result(state: GuardianConversationState) -> GuardianRiskResult:
@@ -171,6 +181,7 @@ def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
         "latency_ms": latency_ms,
         "schema_ok": schema_ok,
         "error": error,
+        "error_metadata": error_metadata,
         "predicted_action": result.recommended_action if result else None,
         "predicted_level": result.risk_level if result else None,
         "predicted_score": result.risk_score if result else None,
@@ -213,15 +224,10 @@ def compute_metrics(results: list[dict]) -> dict[str, Any]:
                 by_action[pred]["fp"] += 1
 
     # Predicted action distribution (None = schema fail)
-    action_dist = Counter(
-        (r["predicted_action"] if r["predicted_action"] is not None else "None")
-        for r in results
-    )
+    action_dist = Counter((r["predicted_action"] if r["predicted_action"] is not None else "None") for r in results)
 
     # Per-category breakdown
-    by_category: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"total": 0, "pass": 0, "fail": 0, "error": 0}
-    )
+    by_category: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "pass": 0, "fail": 0, "error": 0})
     for r in results:
         cat = r.get("category") or "unknown"
         by_category[cat]["total"] += 1
@@ -321,8 +327,7 @@ def print_summary(metrics: dict[str, Any], prompt_version: str, out_path: Path) 
         print("\nAction FAIL cases:")
         for c in metrics["fail_cases"]:
             print(
-                f"  - {c['id']} ({c['category']}): "
-                f"expected={c['expected_action']} → predicted={c['predicted_action']}"
+                f"  - {c['id']} ({c['category']}): expected={c['expected_action']} → predicted={c['predicted_action']}"
             )
 
     print(f"\nDetailed report saved to: {out_path}")
@@ -371,7 +376,7 @@ def main() -> None:
 
     metrics = compute_metrics(results)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     report = {
         "phase": "0",
         "timestamp_utc": timestamp,
@@ -386,7 +391,7 @@ def main() -> None:
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
 
-    print_summary(metrics, PROMPT_VERSION, out_path)
+    print_summary(metrics, GUARDIAN_AGENT_PROMPT_VERSION, out_path)
 
 
 if __name__ == "__main__":
