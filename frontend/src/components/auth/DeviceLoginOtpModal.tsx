@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { KeyRound, Loader2, Mail, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { KeyRound, Loader2, Mail, RefreshCw, ShieldCheck } from "lucide-react";
 
 import Modal from "@/components/ui/Modal";
 import { getApiErrorMessage } from "@/utils/apiError";
@@ -7,18 +7,38 @@ import { getApiErrorMessage } from "@/utils/apiError";
 export default function DeviceLoginOtpModal({
   email,
   expiresInSeconds,
+  resendAvailableInSeconds,
   isSaving,
+  isResending,
   onCancel,
+  onResend,
   onSubmit,
 }: {
   email: string;
   expiresInSeconds: number;
+  resendAvailableInSeconds: number;
   isSaving: boolean;
+  isResending: boolean;
   onCancel: () => void;
+  onResend: () => Promise<number>;
   onSubmit: (otp: string) => Promise<void>;
 }) {
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [resendInSeconds, setResendInSeconds] = useState(Math.max(0, resendAvailableInSeconds));
+
+  useEffect(() => {
+    setResendInSeconds(Math.max(0, resendAvailableInSeconds));
+  }, [resendAvailableInSeconds]);
+
+  useEffect(() => {
+    if (resendInSeconds <= 0) return;
+    const timer = window.setTimeout(() => {
+      setResendInSeconds((current) => Math.max(0, current - 1));
+    }, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [resendInSeconds]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -31,6 +51,20 @@ export default function DeviceLoginOtpModal({
       await onSubmit(otp);
     } catch (requestError: unknown) {
       setError(getApiErrorMessage(requestError, "Không thể xác minh thiết bị. Hãy thử lại."));
+    }
+  };
+
+  const resend = async () => {
+    if (resendInSeconds > 0 || isResending || isSaving) return;
+    setError("");
+    setNotice("");
+    try {
+      const nextCooldown = await onResend();
+      setOtp("");
+      setResendInSeconds(Math.max(0, nextCooldown));
+      setNotice("Mã xác minh mới đã được gửi. Mã cũ không còn hiệu lực.");
+    } catch (requestError: unknown) {
+      setError(getApiErrorMessage(requestError, "Không thể gửi lại mã. Hãy thử lại sau."));
     }
   };
 
@@ -97,6 +131,21 @@ export default function DeviceLoginOtpModal({
           {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
           {isSaving ? "Đang xác minh…" : "Xác minh và tiếp tục"}
         </button>
+
+        <button
+          type="button"
+          onClick={() => void resend()}
+          disabled={isSaving || isResending || resendInSeconds > 0}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 py-3.5 text-sm font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+        >
+          {isResending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {isResending
+            ? "Đang gửi lại…"
+            : resendInSeconds > 0
+              ? `Gửi lại mã sau ${resendInSeconds}s`
+              : "Gửi lại mã xác minh"}
+        </button>
+        {notice && <p role="status" className="mt-2 text-center text-xs font-medium text-emerald-600">{notice}</p>}
       </form>
     </Modal>
   );

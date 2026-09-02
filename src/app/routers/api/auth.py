@@ -55,6 +55,7 @@ from src.app.models.user_card import UserCard
 from src.app.schemas.auth import (
     AccountOverview,
     DeviceLoginOtpRequest,
+    DeviceLoginResendRequest,
     DeviceVerificationRequiredResponse,
     EmailChangeRequest,
     EmailChangeVerifyRequest,
@@ -550,6 +551,10 @@ def _login_response_for_device(
             ),
             email=user.email,
             expires_in_seconds=max(1, int((record.expires_at - now).total_seconds())),
+            resend_available_in_seconds=max(
+                1,
+                int(DEVICE_LOGIN_RESEND_COOLDOWN.total_seconds()) - int((now - record.created_at).total_seconds()),
+            ),
             message="Mã xác minh đã được gửi về email của bạn.",
         )
     if (
@@ -625,6 +630,7 @@ def _login_response_for_device(
         ),
         email=user.email,
         expires_in_seconds=int(DEVICE_LOGIN_CHALLENGE_TTL.total_seconds()),
+        resend_available_in_seconds=int(DEVICE_LOGIN_RESEND_COOLDOWN.total_seconds()),
         message="Mã xác minh đã được gửi về email của bạn.",
     )
 
@@ -789,6 +795,106 @@ def login(
         user=user,
         device_hash=device_hash_from_id(payload.device_id),
         remember_me=payload.remember_me,
+    )
+
+
+@router.post("/login/device/resend", response_model=DeviceVerificationRequiredResponse)
+def resend_login_device_code(
+    payload: DeviceLoginResendRequest,
+    db: Session = Depends(get_db),
+) -> DeviceVerificationRequiredResponse:
+    """Replace an active new-device OTP after the server-side cooldown."""
+    try:
+        claims = decode_device_login_verification_token(payload.verification_token)
+        user_id = uuid.UUID(str(claims["sub"]))
+        verification_id = uuid.UUID(str(claims["verification_id"]))
+    except (JWTError, KeyError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Phiên xác minh thiết bị không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại.",
+        ) from None
+
+    user = _locked_user(db, user_id)
+    record = db.scalar(
+        select(DeviceLoginVerification)
+        .where(
+            DeviceLoginVerification.id == verification_id,
+            DeviceLoginVerification.user_id == user.id,
+        )
+        .with_for_update()
+    )
+    now = datetime.now(UTC)
+    token_version = claims.get("token_version")
+    if (
+        record is None
+        or type(token_version) is not int
+        or token_version != user.auth_token_version
+        or record.token_version != user.auth_token_version
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Phiên xác minh thiết bị không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại.",
+        )
+    if now >= record.expires_at:
+        db.delete(record)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Phiên xác minh thiết bị đã hết hạn. Hãy đăng nhập lại.",
+        )
+
+    elapsed = now - record.created_at
+    if elapsed < DEVICE_LOGIN_RESEND_COOLDOWN:
+        retry_after = max(
+            1,
+            int(DEVICE_LOGIN_RESEND_COOLDOWN.total_seconds()) - int(elapsed.total_seconds()),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after)},
+            detail=f"Vui lòng đợi {retry_after} giây trước khi gửi lại mã.",
+        )
+
+    otp = f"{secrets.randbelow(1_000_000):06d}"
+    record.otp_hash = hash_verification_code(otp)
+    record.expires_at = now + DEVICE_LOGIN_CHALLENGE_TTL
+    record.created_at = now
+    record.attempts = 0
+    db.add(record)
+    add_audit_log(
+        db,
+        action="auth.device_verification_resent",
+        actor_id=user.id,
+        resource_type="user",
+        resource_id=user.id,
+        metadata={"new_device": True},
+    )
+    if not send_email(
+        to=user.email,
+        subject="[Timi] Mã xác minh thiết bị đăng nhập mới",
+        html=_device_login_otp_email(
+            otp=otp,
+            full_name=user.full_name,
+            expire_minutes=int(DEVICE_LOGIN_CHALLENGE_TTL.total_seconds() // 60),
+            attempt_limit=DEVICE_LOGIN_MAX_ATTEMPTS,
+        ),
+    ):
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Không gửi được mã xác minh thiết bị. Vui lòng thử lại sau.",
+        )
+    db.commit()
+    return DeviceVerificationRequiredResponse(
+        verification_token=create_device_login_verification_token(
+            user_id=str(user.id),
+            verification_id=str(record.id),
+            token_version=record.token_version,
+        ),
+        email=user.email,
+        expires_in_seconds=int(DEVICE_LOGIN_CHALLENGE_TTL.total_seconds()),
+        resend_available_in_seconds=int(DEVICE_LOGIN_RESEND_COOLDOWN.total_seconds()),
+        message="Mã xác minh mới đã được gửi về email của bạn.",
     )
 
 

@@ -11,7 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from src.app.config import Settings
 from src.app.core.deps import PendingLogin, get_current_user, get_pending_login
-from src.app.core.policies import TRUSTED_LOGIN_DEVICE_TTL
+from src.app.core.policies import DEVICE_LOGIN_RESEND_COOLDOWN, TRUSTED_LOGIN_DEVICE_TTL
 from src.app.core.security import (
     create_access_token,
     create_card_action_token,
@@ -29,9 +29,10 @@ from src.app.routers.api.auth import (
     _login_response_for_device,
     _record_login_context,
     record_login_location,
+    resend_login_device_code,
     verify_login_device,
 )
-from src.app.schemas.auth import DeviceLoginOtpRequest, LoginLocationRequest
+from src.app.schemas.auth import DeviceLoginOtpRequest, DeviceLoginResendRequest, LoginLocationRequest
 from src.app.services.notifications import add_in_app_notification
 from src.app.services.transaction_telemetry import device_hash_from_id
 from src.app.services.verification_secrets import hash_verification_code, verification_code_matches
@@ -184,6 +185,82 @@ def test_new_device_login_sends_email_without_revoking_the_existing_session() ->
     challenge = decode_device_login_verification_token(response.verification_token)
     assert challenge["sub"] == str(user.id)
     assert challenge["token_version"] == 3
+
+
+def test_resend_device_otp_rotates_the_code_after_cooldown() -> None:
+    user = _login_user(token_version=3, device_hash="a" * 64)
+    now = datetime.now(UTC)
+    record = DeviceLoginVerification(
+        id=uuid4(),
+        user_id=user.id,
+        device_hash="b" * 64,
+        otp_hash=hash_verification_code("123456"),
+        token_version=3,
+        remember_me=True,
+        expires_at=now + timedelta(minutes=5),
+        created_at=now - DEVICE_LOGIN_RESEND_COOLDOWN - timedelta(seconds=1),
+        attempts=2,
+    )
+    proof = create_device_login_verification_token(
+        user_id=str(user.id),
+        verification_id=str(record.id),
+        token_version=3,
+    )
+    db = Mock()
+    db.scalar.side_effect = [user, record]
+
+    with (
+        patch("src.app.routers.api.auth.secrets.randbelow", return_value=654321),
+        patch("src.app.routers.api.auth.send_email", return_value=True) as send_email,
+        patch("src.app.routers.api.auth.add_audit_log") as audit,
+    ):
+        response = resend_login_device_code(
+            DeviceLoginResendRequest(verification_token=proof),
+            db,
+        )
+
+    assert response.resend_available_in_seconds == int(DEVICE_LOGIN_RESEND_COOLDOWN.total_seconds())
+    assert verification_code_matches("654321", record.otp_hash)
+    assert not verification_code_matches("123456", record.otp_hash)
+    assert record.attempts == 0
+    assert record.expires_at > now + timedelta(minutes=9)
+    send_email.assert_called_once()
+    assert audit.call_args.kwargs["action"] == "auth.device_verification_resent"
+    db.commit.assert_called_once()
+
+
+def test_resend_device_otp_enforces_server_cooldown() -> None:
+    user = _login_user(token_version=3, device_hash="a" * 64)
+    now = datetime.now(UTC)
+    record = DeviceLoginVerification(
+        id=uuid4(),
+        user_id=user.id,
+        device_hash="b" * 64,
+        otp_hash=hash_verification_code("123456"),
+        token_version=3,
+        remember_me=True,
+        expires_at=now + timedelta(minutes=5),
+        created_at=now - timedelta(seconds=5),
+        attempts=0,
+    )
+    proof = create_device_login_verification_token(
+        user_id=str(user.id),
+        verification_id=str(record.id),
+        token_version=3,
+    )
+    db = Mock()
+    db.scalar.side_effect = [user, record]
+
+    with patch("src.app.routers.api.auth.send_email") as send_email:
+        with pytest.raises(HTTPException) as throttled:
+            resend_login_device_code(
+                DeviceLoginResendRequest(verification_token=proof),
+                db,
+            )
+
+    assert throttled.value.status_code == 429
+    assert int(throttled.value.headers["Retry-After"]) > 0
+    send_email.assert_not_called()
 
 
 def test_trusted_device_skips_otp_and_location_for_30_days() -> None:

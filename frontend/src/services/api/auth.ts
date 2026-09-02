@@ -58,6 +58,7 @@ export interface DeviceVerificationRequiredResponse {
   verification_token: string;
   email: string;
   expires_in_seconds: number;
+  resend_available_in_seconds: number;
   message: string;
 }
 
@@ -124,6 +125,11 @@ export const authApi = {
 
   verifyLoginDevice: async (data: { verification_token: string; otp: string }): Promise<TokenResponse> => {
     const response = await axiosInstance.post<TokenResponse>("/v1/auth/login/device/verify", data);
+    return response.data;
+  },
+
+  resendLoginDeviceCode: async (data: { verification_token: string }): Promise<DeviceVerificationRequiredResponse> => {
+    const response = await axiosInstance.post<DeviceVerificationRequiredResponse>("/v1/auth/login/device/resend", data);
     return response.data;
   },
 

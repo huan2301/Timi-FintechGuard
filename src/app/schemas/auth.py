@@ -105,6 +105,10 @@ class DeviceLoginOtpRequest(BaseModel):
     otp: str = Field(..., pattern=r"^\d{6}$")
 
 
+class DeviceLoginResendRequest(BaseModel):
+    verification_token: str = Field(..., min_length=20, max_length=4096)
+
+
 class LoginLocationRequest(BaseModel):
     """Mandatory location submission immediately after an authenticated login."""
 
@@ -207,6 +211,7 @@ class DeviceVerificationRequiredResponse(BaseModel):
     verification_token: str
     email: EmailStr
     expires_in_seconds: int = Field(..., ge=1)
+    resend_available_in_seconds: int = Field(default=60, ge=0)
     message: str
 
 

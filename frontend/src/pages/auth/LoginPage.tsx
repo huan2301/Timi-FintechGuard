@@ -119,6 +119,16 @@ export default function LoginPage() {
     },
   });
 
+  const resendDeviceMutation = useMutation({
+    mutationFn: () => {
+      if (!deviceVerification) throw new Error("Thiếu phiên xác minh thiết bị");
+      return authApi.resendLoginDeviceCode({
+        verification_token: deviceVerification.verification_token,
+      });
+    },
+    onSuccess: setDeviceVerification,
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
@@ -438,9 +448,12 @@ export default function LoginPage() {
         <DeviceLoginOtpModal
           email={deviceVerification.email}
           expiresInSeconds={deviceVerification.expires_in_seconds}
+          resendAvailableInSeconds={deviceVerification.resend_available_in_seconds ?? 60}
           isSaving={verifyDeviceMutation.isPending}
+          isResending={resendDeviceMutation.isPending}
           onCancel={() => setDeviceVerification(null)}
           onSubmit={(otp) => verifyDeviceMutation.mutateAsync({ otp }).then(() => undefined)}
+          onResend={() => resendDeviceMutation.mutateAsync().then((data) => data.resend_available_in_seconds)}
         />
       )}
 
